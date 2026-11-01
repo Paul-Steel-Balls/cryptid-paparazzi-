@@ -967,6 +967,35 @@ static func attach_camera(model: CharacterModel, layer: int = 1) -> void:
 	cam.set_layers(layer)
 
 
+## Online: a cap in the player's colour (over the sculpted red one) so you can tell people apart.
+static func set_cap_color(model: CharacterModel, col: Color) -> void:
+	var old:= model.find_child("TeamCap", true, false)
+	if old:
+		old.queue_free()
+	var ba:= model.attach("head")
+	if ba == null:
+		return
+	ba.name = "TeamCap"
+	var sk:= model.skeleton
+	var inv:= sk.get_bone_global_rest(sk.find_bone("head")).affine_inverse()
+	var m:= StandardMaterial3D.new()
+	m.albedo_color = col
+	m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
+	m.roughness = 0.8
+	for part in [[Vector3(0, 1.748, 0.0), Vector3(0.158, 0.09, 0.163)], [Vector3(0, 1.736, 0.152), Vector3(0.116, 0.014, 0.106)],
+			[Vector3(0, 1.834, 0.0), Vector3(0.021, 0.021, 0.021)]]:
+		var mi:= MeshInstance3D.new()
+		var sm:= SphereMesh.new()
+		sm.radius = 1.0
+		sm.height = 2.0
+		mi.mesh = sm
+		mi.material_override = m
+		mi.position = inv * (part[0] as Vector3)
+		mi.scale = part[1]
+		mi.layers = model.meshes[0].layers if not model.meshes.is_empty() else 1
+		ba.add_child(mi)
+
+
 func _build_third_person_rig() -> void:
 	_tp_pivot = Node3D.new()
 	_tp_pivot.name = "TPPivot"

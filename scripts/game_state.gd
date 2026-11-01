@@ -52,7 +52,8 @@ var third_person:= false
 const SETTINGS_PATH:= "user://cryptid_settings.json"
 ## Graphics effects are 0..1 strengths (0 = off).
 const SETTING_DEFAULTS:= {"shadows": 1.0, "ssao": 0.6, "glow": 0.5, "vol_fog": 0.4, "fullscreen": false,
-	"sensitivity": 1.0, "volume": 0.8, "toggle_sprint": false, "mic_enabled": false, "mic_sens": 1.0}
+	"sensitivity": 1.0, "volume": 0.8, "toggle_sprint": false, "mic_enabled": false, "mic_sens": 1.0,
+	"voice_open": false, "voice_volume": 1.0}
 var settings:= SETTING_DEFAULTS.duplicate()
 
 ## Tests and headless tools set this so they never touch the real save.
@@ -348,6 +349,7 @@ func _setup_input() -> void:
 	_add_key("interact", [KEY_E])
 	_add_key("restart", [KEY_R])
 	_add_key("use_item", [KEY_Q])
+	_add_key("voice_ptt", [KEY_T])
 	_add_key("select_bait", [KEY_1])
 	_add_key("select_trap", [KEY_2])
 	_add_key("select_tripod", [KEY_3])

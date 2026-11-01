@@ -3,8 +3,9 @@ class_name MicListener
 ## Your microphone, if you turn it on in the pause menu. Talk (or shout) and cryptids within
 ## earshot come to investigate: quiet talk carries ~8m, yelling ~35m.
 ##
-## This is the groundwork for proximity chat: the same captured audio (the "Mic" bus with an
-## AudioEffectCapture on it) is what a multiplayer build would send to nearby players.
+## Online it's also proximity voice chat: while you're talking (hold T, or open mic in the pause
+## menu) your voice goes out as 16 kHz mono chunks and plays from your character on everyone
+## else's PC, fading with distance (scripts/remote_player.gd). Cryptids hear you then, too.
 
 const BUS:= "Mic"
 const GATE:= 0.08          # below this it's room noise, not you
@@ -19,7 +20,16 @@ var active:= false
 var level:= 0.0
 var radius:= 0.0
 
+signal voice_chunk(data: PackedByteArray)
+
+const VOICE_RATE:= 16000
+const VOICE_CHUNK:= 320          # samples per packet (20 ms)
+
+## Online: is your voice going out right now?
+var transmitting:= false
 var _capture: AudioEffectCapture
+var _phase:= 0.0
+var _pending:= PackedFloat32Array()
 var _stream_player: AudioStreamPlayer
 var _hear_timer:= 0.0
 
@@ -65,8 +75,57 @@ func _stop() -> void:
 		_stream_player.queue_free()
 		_stream_player = null
 	active = false
+	transmitting = false
 	level = 0.0
 	radius = 0.0
+
+
+func _voice(buf: PackedVector2Array) -> void:
+	var was:= transmitting
+	if not Net.online() or GameState.menu_open:
+		transmitting = false
+	elif bool(GameState.settings.get("voice_open", false)):
+		transmitting = level > GATE
+	else:
+		transmitting = Input.is_action_pressed("voice_ptt")
+	if not transmitting:
+		if was and _pending.size() > 0:
+			voice_chunk.emit(encode(_pending))
+		_pending.clear()
+		return
+	var ratio:= AudioServer.get_mix_rate() / float(VOICE_RATE)
+	var sens:= clampf(float(GameState.settings.get("mic_sens", 1.0)), 0.2, 3.0)
+	var pos:= _phase
+	var n:= buf.size()
+	while pos < n:
+		var i:= int(pos)
+		# Crude low-pass: average the neighbourhood we're skipping over.
+		var a:= buf[maxi(i - 1, 0)]
+		var b:= buf[i]
+		var c:= buf[mini(i + 1, n - 1)]
+		_pending.append(((a.x + a.y) * 0.25 + (b.x + b.y) * 0.5 + (c.x + c.y) * 0.25) * 0.5 * sens)
+		pos += ratio
+	_phase = pos - n
+	while _pending.size() >= VOICE_CHUNK:
+		voice_chunk.emit(encode(_pending.slice(0, VOICE_CHUNK)))
+		_pending = _pending.slice(VOICE_CHUNK)
+
+
+## Samples (-1..1) -> 16-bit little-endian bytes.
+static func encode(samples: PackedFloat32Array) -> PackedByteArray:
+	var out:= PackedByteArray()
+	out.resize(samples.size() * 2)
+	for i in samples.size():
+		out.encode_s16(i * 2, int(clampf(samples[i], -1.0, 1.0) * 32767.0))
+	return out
+
+
+static func decode(data: PackedByteArray) -> PackedFloat32Array:
+	var out:= PackedFloat32Array()
+	out.resize(data.size() / 2)
+	for i in out.size():
+		out[i] = data.decode_s16(i * 2) / 32768.0
+	return out
 
 
 ## Loudness 0..1 from a block of stereo frames.
@@ -92,10 +151,13 @@ func _process(delta: float) -> void:
 		return
 	var n:= _capture.get_frames_available()
 	if n > 0:
-		var l:= loudness(_capture.get_buffer(n), float(GameState.settings.get("mic_sens", 1.0)))
+		var buf:= _capture.get_buffer(n)
+		var l:= loudness(buf, float(GameState.settings.get("mic_sens", 1.0)))
 		# Fast attack, slow release, like a VU meter.
 		level = l if l > level else lerpf(level, l, clampf(delta * 4.0, 0.0, 1.0))
-	radius = hear_radius(level)
+		_voice(buf)
+	# Online, cryptids only hear you while your voice is going out (push-to-talk / open mic).
+	radius = hear_radius(level) if (not Net.online() or transmitting) else 0.0
 	if get_tree().paused or player == null or player.indoors:
 		return
 	_hear_timer -= delta

@@ -421,9 +421,14 @@ func set_net_status(t: String) -> void:
 
 
 ## level < 0 hides the tag. radius = how far away cryptids can hear you right now.
-func set_mic(level: float, radius: float = 0.0) -> void:
+func set_mic(level: float, radius: float = 0.0, talking: bool = false) -> void:
 	_mic_label.visible = level >= 0.0
 	if level < 0.0:
+		return
+	if Net.online():
+		var hold:= not bool(GameState.settings.get("voice_open", false))
+		_mic_label.text = "TALKING" if talking else ("HOLD T TO TALK" if hold else "MIC OPEN")
+		_mic_label.add_theme_color_override("font_color", Color(0.45, 1.0, 0.5) if talking else Color(0.6, 0.65, 0.6))
 		return
 	var loud:= clampf(level, 0.0, 1.0)
 	_mic_label.text = ("MIC  ▮▮▮  %dm" % int(radius)) if loud > 0.6 else (("MIC  ▮▮  %dm" % int(radius)) if loud > 0.25 else (("MIC  ▮  %dm" % int(radius)) if loud > 0.05 else "MIC"))

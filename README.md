@@ -5,12 +5,12 @@ Photograph cryptids for the tabloid. Meet the quota, don't get caught.
 Godot 4.7.2, Forward+ renderer, built for Windows PC.
 
 ## Download and play (Windows)
-1. Download **[CryptidPaparazzi-0.12-windows.zip](https://github.com/Paul-Steel-Balls/cryptid-paparazzi-/raw/main/download/CryptidPaparazzi-0.12-windows.zip)** (73 MB).
-2. Unzip it and run `CryptidPaparazzi-0.12.exe`. It's one file with everything inside. Windows SmartScreen may warn because it isn't code-signed: click "More info", then "Run anyway".
-3. To play together, see [Multiplayer](#multiplayer-co-op-up-to-4) below.
+1. Download **[CryptidPaparazzi-0.13-windows.zip](https://github.com/Paul-Steel-Balls/cryptid-paparazzi-/raw/main/download/CryptidPaparazzi-0.13-windows.zip)** (about 73 MB).
+2. Unzip it and run `CryptidPaparazzi-0.13.exe`. It's one file with everything inside. Windows SmartScreen may warn because it isn't code-signed: click "More info", then "Run anyway".
+3. To play together, see [Multiplayer](#multiplayer-co-op-up-to-4) below. Everyone should be on the same version.
 
 ## Run from source
-Open this folder in Godot 4.7.2 (it imports on first open) and press Play, or run `./build.sh 0.12` to run the tests and export a Windows `.exe`.
+Open this folder in Godot 4.7.2 (it imports on first open) and press Play, or run `./build.sh 0.13` to run the tests and export a Windows `.exe`.
 
 ## Where this came from
 
@@ -37,6 +37,7 @@ The source was recovered from `CryptidPaparazzi_2.apk`, version 0.2, package `co
 | Break out of a UFO's tractor beam | Mash A and D (alternating) |
 | Pause, settings, Cryptid Files, Multiplayer | Esc |
 | Fullscreen | F11 or Alt+Enter (or the pause menu) |
+| Talk to nearby players (online, with Microphone on) | Hold T (or set open mic in the pause menu) |
 | Microphone (optional, off by default) | Pause menu → Microphone. Cryptids hear you talk: a whisper carries ~8 m, a yell ~35 m |
 
 ## Layout
@@ -88,7 +89,7 @@ The source was recovered from `CryptidPaparazzi_2.apk`, version 0.2, package `co
 | `scripts/remote_player.gd` | Another player in your world (and a cryptid target on the host) |
 | `scripts/multiplayer_panel.gd` | Pause → MULTIPLAYER |
 | `tools/mp_probe.gd` | Runs a host and a client on one machine and prints what each sees |
-| `tests/test_runner.gd` | Headless test suite (274 checks) |
+| `tests/test_runner.gd` | Headless test suite (281 checks) |
 
 ## Build
 
@@ -117,7 +118,10 @@ One `.exe` with everything inside. Windows SmartScreen may warn the first time b
   - Over the internet: the host either forwards **UDP port 24680** on their router to their PC and gives friends their public IP, or everyone installs a free VPN like Tailscale and joins with the host's Tailscale IP (no router setup).
 - Only the host can sleep or drive; everyone follows. Money, photos, album and unlocks are each player's own.
 - Online, getting grabbed knocks you out (you lose your undeveloped film and come to at camp) instead of ending the night. The joint just makes you high (no slow-mo: the cryptids are shared).
-- Not shared yet: tripod cams, the UFO (each player gets their own), City pedestrians. No voice chat yet.
+- **Proximity voice**: turn on Microphone in the pause menu, then hold T to talk (or switch to open mic). Your voice plays from your character, so it fades with distance; cryptids nearby hear it too. There's a volume slider for other players' voices.
+- Everyone wears a cap in their own colour (red, blue, green, yellow) with their name over their head.
+- Tripod cams and UFOs are seen by everyone. Snap someone else's UFO and you get the money (and it bolts).
+- Not shared yet: City pedestrians (each PC has its own).
 - Command line: `CryptidPaparazzi.exe -- --host`, `-- --join=1.2.3.4`, `-- --name=Ian`.
 
 ## Adding a map
@@ -127,6 +131,7 @@ One `.exe` with everything inside. Windows SmartScreen may warn the first time b
 4. Cryptids with a `home` (Methman's camp, the Jersey Devil's tailgate, the Leperchaun's gold) get their spot on any map they live on. The City places them itself (`scripts/city.gd` `landmarks`).
 
 ## Changelog
+- **0.13**: **Multiplayer, part 2**. Proximity voice chat: hold T (or open mic) and nearby players hear you from your character's position, fading out by about 45 m. Voice goes as 16 kHz mono through the host, about 32 KB/s per talker. Players wear caps in their own colour. Everyone sees everyone's tripod cams and UFOs, and photographing another player's UFO pays you and sends it off.
 - **0.12**: **Multiplayer, part 1**: co-op for up to 4, hosted on one player's PC (Esc → MULTIPLAYER). Everyone sees each other (with name tags and their own cameras), the host's cryptids hunt whoever's closest, flashes, noise, bait, traps, tourists' flashes, the pot of gold and Santa all work across the network, and the host's bed and steering wheel take everyone along. The RV inside is bigger (9 m x 3.8 m) with bunk beds and a dinette: sleeps four. New camera model: a chunky 35mm SLR with a long ribbed lens and a flashgun on top, held in the hands as its own model so the hands no longer melt into it. Everything at the stand costs ten times as much. Snap a tourist before it snaps you and it can't stun you. The campfire, porch light and beacon are much softer, and shiny surfaces no longer blow out to white (Toe's face, the RV). Fullscreen now really goes fullscreen (true fullscreen), with F11 / Alt+Enter as shortcuts. The pause menu scrolls when it doesn't fit.
 - **0.11**: **New map: The City** (unlocked from Lakeside): skyscrapers with lit windows, a street grid with parked cars, lamps and sidewalk trees, a park with a fountain, a parking lot (the Jersey Devil's tailgate moved here), an elevated highway with a homeless encampment underneath (Methman's new home), a river with a stone bridge, hot dog / pretzel / coffee stands, a taco truck, a newspaper kiosk selling THE DAILY CRYPTID, dumpsters to hide behind, and ordinary people walking the streets (careful where you put tripods). City cryptids walk round the blocks, not through them. **New cryptids**: F'hairy (Lakeside, skittish), Leperchaun (Deep Woods, guards a pot of gold you can steal), bEnt (Deep Woods, very slow), The Rake (City, rare: only moves while you're not looking at it). Methman, the Jersey Devil, Crackin' and The Rake now live in the City. **UFO**: three tourist flashes in a night and the greys send the saucer. A photo of it is worth about $1,000; if the beam gets you, mash A/D to break free (it then gives up), or you're abducted and lose your camera and undeveloped film (Toe has a spare). **Santa** parks his sleigh on the RV roof about one night in 365. **Microphone** option in the pause menu (off by default): cryptids hear you talk. Balance: tripods $150, must be within 6 m and no longer pay extra for being tripod shots; joint $40 (12 s); beer $15; photos taken drunk or high pay half. The shopkeeper's voice is down to Toe's level. Toe's shirt holds its colour and his nail is a big glossy Thumb-Thumb oval. The joint icon is a cone now, not a cigarette. Fixed the third-person head locking over one shoulder when sprinting backwards on a diagonal while moving the mouse.
 - **0.10**: New gear at the stand: **tripod cam** ($40, key 3: set it facing where you look; it snaps the first thing that walks into view, up close, scored as if you'd stood in the danger zone yourself. It'll photograph you too, and the flash brings nearby cryptids over to look), **joint** ($25, key 4: about 15 s of slow motion for every cryptid, with a hazy screen and slowed sound), **beer** ($8, key 5: 25 s of faster legs, but cryptids hear you walking). Fixed the third-person head getting stuck looking over his shoulder (the head turn was being stacked frame on frame on bones the animation doesn't touch). New "PHOTO LAB · Darkroom · Since 1974" enamel sign over the RV door. Jumping into deep water (off the dock or over the shallows) puts you straight back where you last stood. New tree, bush and rock models: layered pines with ragged drooping branches and root flares, lumpy-canopied broadleafs with pale trunks at Lakeside, clumpy bushes, faceted boulders (mossy in the Deep Woods).

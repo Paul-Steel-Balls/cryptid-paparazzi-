@@ -53,6 +53,7 @@ func _ready() -> void:
 	await _test_v010()
 	await _test_v011()
 	_test_v012()
+	_test_v013()
 	print("RESULT: %d/%d checks passed" % [_passed, _passed + _failed])
 	if _failed > 0:
 		get_tree().quit(1)
@@ -1584,3 +1585,37 @@ func _test_v012() -> void:
 	_check("v012: and stop hosting", not Net.online() and Net.has_authority())
 	_check("v012: fullscreen can be toggled", GameState.has_method("toggle_fullscreen"))
 	GameState.reset()
+
+
+func _test_v013() -> void:
+	# Voice: 16-bit round trip keeps the waveform.
+	var wave:= PackedFloat32Array()
+	for i in 320:
+		wave.append(sin(i * 0.3) * 0.6)
+	var back:= MicListener.decode(MicListener.encode(wave))
+	var err:= 0.0
+	for i in wave.size():
+		err = maxf(err, absf(back[i] - wave[i]))
+	_check("v013: voice survives 16-bit encoding", back.size() == 320 and err < 0.001)
+	_check("v013: a voice packet is small (640 bytes / 20 ms)", MicListener.encode(wave).size() == 640)
+	_check("v013: push-to-talk key exists", InputMap.has_action("voice_ptt"))
+	# Remote players: coloured cap, and their voice plays from them.
+	Net.players = {5: {"name": "Alex", "color": Color(0.25, 0.55, 1.0)}}
+	var rp:= RemotePlayer.new()
+	rp.peer_id = 5
+	add_child(rp)
+	_check("v013: other players wear their colour", rp.find_child("TeamCap*", true, false) != null)
+	rp.play_voice(MicListener.encode(wave))
+	_check("v013: their voice plays from their character", rp.voice_samples == 320 and rp.is_talking())
+	rp.free()
+	Net.players = {}
+	# Someone else's UFO shows up as a copy you can photograph.
+	var u:= UFO.new()
+	u.ghost = true
+	u.ghost_owner = 5
+	add_child(u)
+	u.ghost_apply(Vector3(1, 12, 2), true, false, 0.4)
+	_check("v013: a copy of another player's UFO shows its beam", u.is_beaming() and u.get("_beam").visible)
+	u.ghost_apply(Vector3(1, 12, 2), false, true, 0.0)
+	_check("v013: ...and leaves when theirs does", u.phase == UFO.Phase.LEAVE)
+	u.free()

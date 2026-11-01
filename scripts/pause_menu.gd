@@ -56,7 +56,8 @@ func _ready() -> void:
 	for pair in [["shadows", "Moon shadows"], ["ssao", "Ambient occlusion"], ["glow", "Glow (eyes, lights, flash)"], ["vol_fog", "Volumetric fog"]]:
 		v.add_child(_slider(pair[1], pair[0], 0.0, 1.0, true))
 	for pair in [["fullscreen", "Fullscreen"], ["toggle_sprint", "Toggle sprint (tap Shift instead of holding)"],
-			["mic_enabled", "Microphone (cryptids can hear you talk!)"]]:
+			["mic_enabled", "Microphone (cryptids can hear you talk!)"],
+			["voice_open", "Online voice: open mic (otherwise hold T to talk)"]]:
 		var cb:= CheckButton.new()
 		cb.text = pair[1]
 		cb.button_pressed = bool(GameState.settings.get(pair[0], false))
@@ -75,6 +76,7 @@ func _ready() -> void:
 	v.add_child(_slider("Volume", "volume", 0.0, 1.0))
 	v.add_child(_slider("Mouse sensitivity", "sensitivity", 0.3, 2.5))
 	v.add_child(_slider("Mic sensitivity", "mic_sens", 0.2, 3.0))
+	v.add_child(_slider("Other players' voices", "voice_volume", 0.0, 1.0))
 	_mic_meter = ProgressBar.new()
 	_mic_meter.show_percentage = false
 	_mic_meter.max_value = 1.0

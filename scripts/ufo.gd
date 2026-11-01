@@ -23,6 +23,10 @@ const HUNT_TIME:= 80.0       # gives up after this long
 
 var player: Player
 var terrain: Terrain
+## Online: a copy of another player's UFO (it isn't hunting you; you can still photograph it).
+var ghost:= false
+var ghost_owner:= 0
+var _ghost_target:= Vector3.ZERO
 var phase: int = Phase.ARRIVE
 ## 0..1 how close you are to breaking free.
 var struggle:= 0.0
@@ -99,6 +103,9 @@ func _process(delta: float) -> void:
 		var m:= _lights[i].material_override as StandardMaterial3D
 		var on:= int(_t * 6.0 + i) % 3 == 0
 		m.emission_energy_multiplier = 4.0 if on else 0.6
+	if ghost:
+		global_position = global_position.lerp(_ghost_target, clampf(delta * 8.0, 0.0, 1.0))
+		return
 	if player == null or not is_instance_valid(player):
 		return
 	match phase:
@@ -180,6 +187,18 @@ func _beam_tick(delta: float) -> void:
 		_release(false)
 		abducted.emit()
 		_leave()
+
+
+func ghost_apply(pos: Vector3, beaming: bool, leaving: bool, p_lift: float) -> void:
+	_ghost_target = pos
+	_beam.visible = beaming
+	_beam_light.visible = beaming
+	lift = p_lift
+	if leaving and phase != Phase.LEAVE:
+		phase = Phase.LEAVE
+		state = PhotoScoring.CryptidState.FLEE
+	elif not leaving:
+		phase = Phase.BEAM if beaming else Phase.HUNT
 
 
 ## One press while in the beam. Only alternating presses count (A, D, A, D...).

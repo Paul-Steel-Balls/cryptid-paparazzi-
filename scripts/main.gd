@@ -41,6 +41,7 @@ var _rng:= RandomNumberGenerator.new()
 ## Special visitors and loot (see scripts/ufo.gd, santa.gd, pot_of_gold.gd).
 var _ufo: UFO
 var _ufo_done:= false
+var _ufo_share_t:= 0.0
 var _tourist_flashes:= 0
 const UFO_AFTER_FLASHES:= 3
 var _santa: Santa
@@ -176,6 +177,7 @@ func _ready() -> void:
 	_net = NetSync.new()
 	_net.setup(self)
 	add_child(_net)
+	_mic.voice_chunk.connect(_net.send_voice)
 	Net.left_game.connect(_on_left_game)
 	Net.players_changed.connect(_update_net_label)
 	_update_net_label()
@@ -470,6 +472,13 @@ func _spawn_santa() -> void:
 	_player.extra_subjects.append(_santa)
 
 
+## Another player photographed the UFO that's after me.
+func spook_my_ufo() -> void:
+	if _ufo != null and is_instance_valid(_ufo):
+		_ufo.spooked()
+		_hud.show_message("Someone got a picture of your UFO! It's bolting.")
+
+
 func santa_leave() -> void:
 	if _santa != null and is_instance_valid(_santa):
 		_santa.take_off()
@@ -487,7 +496,9 @@ func _summon_ufo() -> void:
 	_player.extra_subjects.append(_ufo)
 	_ufo.abducted.connect(_on_abducted)
 	_ufo.escaped_beam.connect(func(): _hud.show_message("You wriggled free! It's had enough of you for one night."))
-	_ufo.left.connect(func(): _ufo = null)
+	_ufo.left.connect(func():
+		_ufo = null
+		_net.ufo_gone())
 	_hud.show_message("A low hum overhead... THEY'RE COMING FOR YOU. Snap it before it gets you — or run!")
 
 
@@ -643,8 +654,13 @@ func _process(delta: float) -> void:
 		])
 	_hud.set_flash_charge(_player.flash_ready_fraction())
 	_hud.set_struggle(_ufo.struggle if _ufo != null and is_instance_valid(_ufo) and _ufo.is_beaming() else -1.0)
+	if _ufo != null and is_instance_valid(_ufo) and Net.online():
+		_ufo_share_t -= delta
+		if _ufo_share_t <= 0.0:
+			_ufo_share_t = 0.1
+			_net.share_ufo(_ufo)
 	if _mic != null:
-		_hud.set_mic(_mic.level if _mic.active else -1.0, _mic.radius)
+		_hud.set_mic(_mic.level if _mic.active else -1.0, _mic.radius, _mic.transmitting)
 	# Toe Rogan looks over when you come near.
 	if _toe_model and not _poster.is_open() and not _cutscene:
 		_toe_model.play("talk" if _player.global_position.distance_to(_toe.global_position) < 8.0 else "idle")
@@ -720,9 +736,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _on_photo_taken(result: Dictionary) -> void:
 	var who: Array = result.get("species_list", [])
-	if "ufo" in who and _ufo != null and is_instance_valid(_ufo):
-		_ufo.spooked()
-		_hud.show_message("YOU GOT THE UFO!! It's bolting — that one's worth a fortune.")
+	if "ufo" in who:
+		for subj in result.get("subjects", []):
+			if subj is UFO and (subj as UFO).ghost:
+				_net.ufo_snapped((subj as UFO).ghost_owner)
+				_hud.show_message("YOU GOT %s'S UFO!! That one's worth a fortune." % Net.name_of((subj as UFO).ghost_owner).to_upper())
+		if _ufo != null and is_instance_valid(_ufo) and _ufo in result.get("subjects", []):
+			_ufo.spooked()
+			_hud.show_message("YOU GOT THE UFO!! It's bolting — that one's worth a fortune.")
 	if "santa" in who and _santa != null and is_instance_valid(_santa):
 		_santa.take_off()
 		if Net.online():
@@ -786,6 +807,7 @@ func _on_item_placed(kind: String, node: Node3D) -> void:
 		return
 	if kind == "tripod":
 		(node as Tripod).fired.connect(_on_tripod_fired.bind(node))
+		_net.share_tripod(node as Tripod)
 		_hud.show_message("Tripod cam set. It'll snap the first thing that walks in front of it. Stay out of its way.")
 	elif kind == "trap":
 		(node as Trap).sprung.connect(_on_trap_sprung.bind(node))
@@ -1693,6 +1715,13 @@ func _on_left_game(reason: String) -> void:
 func _update_net_label() -> void:
 	if _hud == null:
 		return
+	var body:= _player.get("_body_model") as CharacterModel
+	if body and Net.online() and Net.players.has(Net.my_id()):
+		Player.set_cap_color(body, Net.color_of(Net.my_id()))
+		var cap:= body.find_child("TeamCap", true, false)
+		if cap:
+			for c in cap.get_children():
+				(c as MeshInstance3D).layers = Player.LAYER_BODY
 	if not Net.online():
 		_hud.set_net_status("")
 		return
