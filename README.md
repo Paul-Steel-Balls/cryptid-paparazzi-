@@ -5,8 +5,8 @@ Photograph cryptids for the tabloid. Meet the quota, don't get caught.
 Godot 4.7.2, Forward+ renderer, built for Windows PC.
 
 ## Download and play (Windows)
-1. Go to **[Releases](https://github.com/Paul-Steel-Balls/cryptid-paparazzi-/releases/latest)** and download `CryptidPaparazzi-0.12.exe`.
-2. Run it. It's one file with everything inside. Windows SmartScreen may warn because it isn't code-signed: click "More info", then "Run anyway".
+1. Download **[CryptidPaparazzi-0.12-windows.zip](https://github.com/Paul-Steel-Balls/cryptid-paparazzi-/raw/main/download/CryptidPaparazzi-0.12-windows.zip)** (73 MB).
+2. Unzip it and run `CryptidPaparazzi-0.12.exe`. It's one file with everything inside. Windows SmartScreen may warn because it isn't code-signed: click "More info", then "Run anyway".
 3. To play together, see [Multiplayer](#multiplayer-co-op-up-to-4) below.
 
 ## Run from source
