@@ -1,0 +1,13 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/rv.gd" id="1_d5hoi"]
+
+[sub_resource type="BoxShape3D" id="1"]
+size = Vector3(4.6, 2.4, 2.4)
+
+[node name="RV" type="StaticBody3D" unique_id=118794147]
+script = ExtResource("1_d5hoi")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1373132295]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
+shape = SubResource("1")

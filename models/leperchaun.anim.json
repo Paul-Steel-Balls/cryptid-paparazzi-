@@ -1,0 +1,11 @@
+{
+ "ground_speed": {
+  "idle": 0.0,
+  "walk": 1.186,
+  "run": 2.672,
+  "jig": 0.0,
+  "eat": 0.0,
+  "trapped": 0.0,
+  "roar": 0.0
+ }
+}

@@ -1,0 +1,10 @@
+{
+ "ground_speed": {
+  "idle": 0.0,
+  "walk": 1.164,
+  "run": 2.895,
+  "talk": 0.0,
+  "swap": 0.0,
+  "impressed": 0.0
+ }
+}

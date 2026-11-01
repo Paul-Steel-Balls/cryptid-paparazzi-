@@ -1,0 +1,14 @@
+{
+ "ground_speed": {
+  "idle": 0.0,
+  "walk": 1.812,
+  "jog": 3.345,
+  "run": 4.8,
+  "jump": 0.0,
+  "aim": 0.0,
+  "crouch": 0.0,
+  "crouch_walk": 0.762,
+  "snap": 0.0,
+  "drive": 0.0
+ }
+}

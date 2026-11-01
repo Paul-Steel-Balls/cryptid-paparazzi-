@@ -1,0 +1,8 @@
+.godot/
+*.import
+/android/
+__pycache__/
+keys/
+*.keystore
+/build/
+*.exe
