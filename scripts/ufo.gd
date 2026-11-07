@@ -21,6 +21,8 @@ const LIFT_HEIGHT:= 7.5
 const LIFT_TIME:= 6.0        # seconds of beam before you're inside
 const MASH_GAIN:= 0.085      # per alternating A/D press
 const MASH_DECAY:= 0.16      # per second
+## A clear shot of it is worth a flat $500 (once per visit).
+var flat_pay:= 500
 ## Already photographed this visit: further photos of it are worth nothing.
 var paid_out:= false
 

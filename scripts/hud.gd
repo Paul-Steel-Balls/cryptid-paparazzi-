@@ -326,13 +326,9 @@ func set_night_time(seconds: float) -> void:
 	_timer_label.text = "%d:%02d" % [s / 60, s % 60]
 
 
-## Night: how long until dawn. Day: a nudge to go to bed.
-func set_clock(day: bool, left: float) -> void:
-	if day:
-		_timer_label.text = "DAY · sleep to start the next night"
-		return
-	var s:= int(ceil(left))
-	_timer_label.text = "DAWN IN %d:%02d" % [s / 60, s % 60]
+## The moon's path across the sky is the clock now; nothing on screen. (Kept for callers.)
+func set_clock(_day: bool, _left: float) -> void:
+	_timer_label.text = ""
 
 
 ## Compass: player's heading + markers [{"pos": Vector3, "label": String, "color": Color}].
