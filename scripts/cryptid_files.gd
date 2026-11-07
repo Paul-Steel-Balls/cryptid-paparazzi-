@@ -17,7 +17,7 @@ const ENTRIES:= [
 	["fhairy", "A large, very hairy man in a fairy costume three sizes too small. Wand, wings, tutu. Skittish: one flash and he flutters off, shrieking."],
 	["leperchaun", "A leprechaun with leprosy. Bits keep falling off; the gold never does. Guards his pot of gold in the Deep Woods: catch it unguarded and it's yours."],
 	["bent", "An Ent with bloodshot eyes, a red solo cup in one branch and a joint in the other. Slow. Very slow. Duuude."],
-	["the_rake", "Slenderman-tall, suit and tie, and a big plastic leaf rake for a head. Only moves when you're not looking at it. So keep looking."],
+	["the_rake", "Slenderman-tall, suit and tie, and a big plastic leaf rake for a head. Only moves when you're not looking at it. So keep looking... but not for too long: stare and it's gone, and then it's behind you."],
 	["santa", "Turns up on the roof of your RV about one night a year. Waves. Ho-ho-hos. One flash and he's gone till next Christmas."],
 	["wherewolf", "Hopelessly lost. Unfathomably rare. Holding the map upside down. If you see him, you are very lucky."],
 ]

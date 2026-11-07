@@ -55,6 +55,7 @@ func _ready() -> void:
 	_test_v012()
 	_test_v013()
 	await _test_v014()
+	await _test_v015()
 	print("RESULT: %d/%d checks passed" % [_passed, _passed + _failed])
 	if _failed > 0:
 		get_tree().quit(1)
@@ -1467,7 +1468,7 @@ func _test_v011() -> void:
 	ufo.global_position = Vector3(0, UFO.ALTITUDE, 0)
 	pl.extra_subjects = [ufo]
 	var shot:= pl.evaluate_from(Vector3(8, 1.6, 8), (ufo.photo_point() - Vector3(8, 1.6, 8)).normalized())
-	_check("v014: a UFO photo pays a bit (not a fortune)", shot.get("species", "") == "ufo" and int(shot.get("value", 0)) >= 100 and int(shot.get("value", 0)) <= 400)
+	_check("v014: a UFO photo pays $500", shot.get("species", "") == "ufo" and int(shot.get("value", 0)) == 500)
 	ufo.photographed()
 	var shot2:= pl.evaluate_from(Vector3(8, 1.6, 8), (ufo.photo_point() - Vector3(8, 1.6, 8)).normalized())
 	_check("v014: ...once: more photos of the same UFO pay nothing", int(shot2.get("value", 0)) == 0)
@@ -1671,3 +1672,54 @@ func _key(k: int) -> InputEventKey:
 	var e:= InputEventKey.new()
 	e.keycode = k as Key
 	return e
+
+
+func _test_v015() -> void:
+	# Stare at The Rake too long and it reappears behind you.
+	var holder:= Node3D.new()
+	add_child(holder)
+	var target:= StaticBody3D.new()
+	var tcs:= CollisionShape3D.new()
+	tcs.shape = SphereShape3D.new()
+	target.add_child(tcs)
+	holder.add_child(target)
+	var cam:= Camera3D.new()
+	holder.add_child(cam)
+	cam.global_position = Vector3(0, 1.6, 0)
+	cam.current = true
+	var rake:= (load("res://cryptid.tscn") as PackedScene).instantiate() as Cryptid
+	rake.configure("the_rake")
+	rake.player_ref = target
+	rake.map_half = 100.0
+	holder.add_child(rake)
+	rake.global_position = Vector3(0, 1.4, -12)
+	target.look_at(Vector3(0, 0, -12))    # the "player" faces the Rake
+	cam.look_at(rake.global_position)
+	for i in 6:
+		await get_tree().physics_frame
+	_check("v015: The Rake freezes while watched", rake.watched)
+	rake.set("_stare", 99.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var to:= rake.global_position - target.global_position
+	_check("v015: stare too long and it reappears behind you", to.dot(-target.global_transform.basis.z) < 0.0 and Vector2(to.x, to.z).length() > 8.0)
+	_check("v015: ...and it's coming for you", rake.state == Cryptid.State.CHASE)
+	holder.free()
+	# The moon is the clock; no countdown on screen.
+	GameState.current_map = "woods"
+	var main_node: Node = (load("res://main.tscn") as PackedScene).instantiate()
+	add_child(main_node)
+	await get_tree().process_frame
+	var moon: DirectionalLight3D = main_node.get("_moon")
+	main_node.call("_moon_arc", 0.0)
+	var start:= moon.rotation_degrees
+	main_node.call("_moon_arc", 0.5)
+	var mid:= moon.rotation_degrees
+	main_node.call("_moon_arc", 1.0)
+	var end:= moon.rotation_degrees
+	_check("v015: the moon rises, peaks at midnight and sets (east to west)", mid.x < start.x - 30.0 and start.y > 60.0 and end.y < -60.0)
+	await get_tree().process_frame
+	var hud = main_node.get("_hud")
+	_check("v015: no countdown text on screen", (hud.get("_timer_label") as Label).text == "")
+	main_node.free()
+	GameState.reset()

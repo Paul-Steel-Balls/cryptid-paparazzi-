@@ -643,6 +643,7 @@ func _process(delta: float) -> void:
 		return
 	if not is_day:
 		_night_time += delta
+		_moon_arc(_night_time / NIGHT_LENGTH)
 		if _night_time >= NIGHT_LENGTH and Net.has_authority():
 			begin_dawn()
 	else:
@@ -1601,6 +1602,17 @@ func begin_dawn(instant: bool = false) -> void:
 		_hud.show_message("The sun's coming up. Nothing comes out in daylight: develop your film, shop, then sleep in the RV for night %d." % (GameState.night + 1))
 
 
+## The moon is the clock: it rises in the east as the night starts, peaks overhead (to the
+## south) at midnight and sets in the west at dawn. Shadows swing round with it.
+func _moon_arc(p: float) -> void:
+	if _moon == null:
+		return
+	p = clampf(p, 0.0, 1.0)
+	var elev:= 18.0 + 50.0 * sin(PI * p)
+	var yaw:= lerpf(80.0, -80.0, p)
+	_moon.rotation_degrees = Vector3(-elev, yaw, 0)
+
+
 ## 0 = the map's night, 1 = daytime: sky, light, fog, moon -> sun.
 func _apply_daylight(t: float) -> void:
 	if _env == null or _moon == null:
@@ -1656,6 +1668,7 @@ func _setup_sky() -> void:
 	moon.light_cull_mask = 0xFFFFF & ~RVInterior.LAYER   # no moonlight through the RV roof
 	add_child(moon)
 	_moon = moon
+	_moon_arc(_night_time / NIGHT_LENGTH)
 	_apply_quality()
 	var disc:= MeshInstance3D.new()
 	var sm:= SphereMesh.new()

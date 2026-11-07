@@ -5,12 +5,12 @@ Photograph cryptids for the tabloid. Meet the quota, don't get caught.
 Godot 4.7.2, Forward+ renderer, built for Windows PC.
 
 ## Download and play (Windows)
-1. Download **[CryptidPaparazzi-0.14-windows.zip](https://github.com/Paul-Steel-Balls/cryptid-paparazzi-/raw/main/download/CryptidPaparazzi-0.14-windows.zip)** (about 73 MB).
-2. Unzip it and run `CryptidPaparazzi-0.14.exe`. It's one file with everything inside. Windows SmartScreen may warn because it isn't code-signed: click "More info", then "Run anyway".
+1. Download **[CryptidPaparazzi-0.15-windows.zip](https://github.com/Paul-Steel-Balls/cryptid-paparazzi-/raw/main/download/CryptidPaparazzi-0.15-windows.zip)** (about 73 MB).
+2. Unzip it and run `CryptidPaparazzi-0.15.exe`. It's one file with everything inside. Windows SmartScreen may warn because it isn't code-signed: click "More info", then "Run anyway".
 3. To play together, see [Multiplayer](#multiplayer-co-op-up-to-4) below. Everyone should be on the same version.
 
 ## Run from source
-Open this folder in Godot 4.7.2 (it imports on first open) and press Play, or run `./build.sh 0.14` to run the tests and export a Windows `.exe`.
+Open this folder in Godot 4.7.2 (it imports on first open) and press Play, or run `./build.sh 0.15` to run the tests and export a Windows `.exe`.
 
 ## Where this came from
 
@@ -89,7 +89,7 @@ The source was recovered from `CryptidPaparazzi_2.apk`, version 0.2, package `co
 | `scripts/remote_player.gd` | Another player in your world (and a cryptid target on the host) |
 | `scripts/multiplayer_panel.gd` | Pause → MULTIPLAYER |
 | `tools/mp_probe.gd` | Runs a host and a client on one machine and prints what each sees |
-| `tests/test_runner.gd` | Headless test suite (294 checks) |
+| `tests/test_runner.gd` | Headless test suite (299 checks) |
 
 ## Build
 
@@ -104,8 +104,8 @@ One `.exe` with everything inside. Windows SmartScreen may warn the first time b
 - Go into the **RV** (E at the door): the **darkroom** develops your film (money + album + Cryptid Files), the **bed** ends the night, the **driver's seat** travels to unlocked maps. Undeveloped photos keep overnight and on the road.
 - **Toe Rogan** at the campfire: his WANTED poster shows who's on this map. He swaps your camera for a fresh one (film reload). Show him a developed photo of every common and uncommon on the map and he unlocks the next one.
 - The **stand** next to the RV sells bait ($100), traps ($200), tripod cams ($1,500), joints ($400) and beer ($150). You can carry 5 of each. Photos taken while drunk or high pay half.
-- Get photographed by grey tourists ten times in one night and a **UFO** comes for you. A photo of it pays a bit (once), but it won't go away: when the beam gets you, mash A/D to break free, or lose your camera and undeveloped film.
-- A **night lasts 15 minutes**. At dawn the cryptids go home and nothing comes out until you sleep in the RV.
+- Get photographed by grey tourists ten times in one night and a **UFO** comes for you. A clear photo of it pays $500 (once), but it won't go away: when the beam gets you, mash A/D to break free, or lose your camera and undeveloped film.
+- A **night lasts 15 minutes**: watch the moon. It rises in the east, is highest at midnight and sets in the west at dawn. Then the cryptids go home and nothing comes out until you sleep in the RV.
 - The **Leperchaun**'s pot of gold is out in the Deep Woods. Find it unguarded and it's $150 cash, once a night. He will chase you.
 - About one night in 365 (and every 365th night), **Santa** parks on your RV roof.
 - Grey tourists are faster than you and their flash blinds you for a couple of seconds.
@@ -132,6 +132,7 @@ One `.exe` with everything inside. Windows SmartScreen may warn the first time b
 4. Cryptids with a `home` (Methman's camp, the Jersey Devil's tailgate, the Leperchaun's gold) get their spot on any map they live on. The City places them itself (`scripts/city.gd` `landmarks`).
 
 ## Changelog
+- **0.15**: The Rake: stare at it for more than a few seconds and it vanishes in a puff of grit and reappears 9 to 14 m behind you, already coming. No more countdown on screen: the moon is the clock, rising in the east, peaking overhead at midnight and setting in the west at dawn (shadows swing round with it). A clear photo of the UFO pays a flat $500 (once per visit).
 - **0.14**: **Toe Rogan's head is now a Thumb-Thumb-style toe**: one tall, smooth column of skin with a big oval nail on the upper front and two knuckle creases, no face, rising out of a red V-neck (with crisp sleeves, no more colour bleeding). **Day and night**: a night lasts 15 minutes (the HUD counts down to dawn); at dawn the cryptids, the UFO and Santa leave, the sky brightens, and nothing comes out until you sleep in the RV. **UFO**: now comes after 10 tourist photos in a night (warnings at 7 and 9), pays about a quarter of what it did and only for the first photo, and doesn't leave when photographed: you have to beat the tractor beam (mash A/D) to get rid of it (or hide in the RV until morning). **Pause menu**: Settings (graphics, sound, mouse, mic) and Controls (every key and mouse button rebindable; click, press, done; swaps if the key was taken; reset to defaults) are their own pages. **Maps are 20% bigger** across (44% more ground), with the same density of trees, bushes and rocks; the City's streets, blocks, river, overpass and everything on them spread out to match. **City chases**: cryptids no longer snag on parked cars, sidewalk trees, stands or overpass pillars (they pass through street furniture; you don't), and hunters follow your footsteps round corners for longer.
 - **0.13**: **Multiplayer, part 2**. Proximity voice chat: hold T (or open mic) and nearby players hear you from your character's position, fading out by about 45 m. Voice goes as 16 kHz mono through the host, about 32 KB/s per talker. Players wear caps in their own colour. Everyone sees everyone's tripod cams and UFOs, and photographing another player's UFO pays you and sends it off.
 - **0.12**: **Multiplayer, part 1**: co-op for up to 4, hosted on one player's PC (Esc → MULTIPLAYER). Everyone sees each other (with name tags and their own cameras), the host's cryptids hunt whoever's closest, flashes, noise, bait, traps, tourists' flashes, the pot of gold and Santa all work across the network, and the host's bed and steering wheel take everyone along. The RV inside is bigger (9 m x 3.8 m) with bunk beds and a dinette: sleeps four. New camera model: a chunky 35mm SLR with a long ribbed lens and a flashgun on top, held in the hands as its own model so the hands no longer melt into it. Everything at the stand costs ten times as much. Snap a tourist before it snaps you and it can't stun you. The campfire, porch light and beacon are much softer, and shiny surfaces no longer blow out to white (Toe's face, the RV). Fullscreen now really goes fullscreen (true fullscreen), with F11 / Alt+Enter as shortcuts. The pause menu scrolls when it doesn't fit.

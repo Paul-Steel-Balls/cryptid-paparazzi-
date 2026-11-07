@@ -104,6 +104,8 @@ var _net_t:= -1.0
 var watched:= false
 ## Online host: a joining player is staring at it (they report it ~20x a second).
 var remote_watch_until:= 0.0
+var _stare:= 0.0
+var _stare_limit:= 4.0
 var _watch_check:= 0.0
 
 
@@ -312,6 +314,89 @@ func _enter_flee() -> void:
 			Audio.play_3d("shutter", global_position, -2.0)
 		if _has_line_of_sight():
 			flashed_player.emit()
+
+
+## The Rake's trick: gone in a puff of grit, back a dozen metres behind whoever was staring.
+func _vanish_and_reappear() -> void:
+	_stare = 0.0
+	_stare_limit = randf_range(3.0, 5.5)
+	var who: Node3D = player_ref
+	if who == null or not is_instance_valid(who) or who.get("indoors") == true:
+		return
+	var fwd:= -who.global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length() < 0.01:
+		fwd = Vector3(0, 0, -1)
+	fwd = fwd.normalized()
+	for i in 14:
+		var ang:= randf_range(-0.6, 0.6)
+		var dist:= randf_range(9.0, 14.0)
+		var back:= (-fwd).rotated(Vector3.UP, ang)
+		var q:= who.global_position + back * dist
+		if absf(q.x) > map_half or absf(q.z) > map_half:
+			continue
+		if city != null and city.blocked(Vector2(q.x, q.z)):
+			continue
+		if _deep(q.x, q.z):
+			continue
+		spawn_puff(get_parent(), global_position + Vector3(0, 0.3, 0))
+		Audio.play_3d(_voice_name("grunt"), global_position, 2.0, 60.0)
+		var y:= terrain.height_at(q.x, q.z) + body_height * 0.5 if terrain else global_position.y
+		global_position = Vector3(q.x, y, q.z)
+		_face_toward(who.global_position)
+		rotation.y = atan2(_facing.x, _facing.z)
+		spawn_puff(get_parent(), global_position + Vector3(0, 0.3, 0))
+		watched = false
+		remote_watch_until = 0.0
+		_route.clear()
+		if state != State.CHASE:
+			_enter_chase()
+		else:
+			_last_known_pos = who.global_position
+			_los_blocked_timer = 0.0
+		_say("alert")
+		return
+
+
+## A burst of dark grit (The Rake coming and going).
+static func spawn_puff(parent: Node, pos: Vector3) -> void:
+	if parent == null:
+		return
+	var p:= CPUParticles3D.new()
+	p.one_shot = true
+	p.amount = 46
+	p.lifetime = 1.3
+	p.explosiveness = 0.9
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	p.emission_box_extents = Vector3(0.4, 1.3, 0.4)
+	p.direction = Vector3(0, 1, 0)
+	p.spread = 70.0
+	p.initial_velocity_min = 0.6
+	p.initial_velocity_max = 2.2
+	p.gravity = Vector3(0, 0.4, 0)
+	p.scale_amount_min = 0.25
+	p.scale_amount_max = 0.6
+	var curve:= Curve.new()
+	curve.add_point(Vector2(0, 0.6))
+	curve.add_point(Vector2(0.3, 1.0))
+	curve.add_point(Vector2(1, 0))
+	p.scale_amount_curve = curve
+	var mesh:= SphereMesh.new()
+	mesh.radius = 0.3
+	mesh.height = 0.6
+	mesh.radial_segments = 6
+	mesh.rings = 3
+	p.mesh = mesh
+	var m:= StandardMaterial3D.new()
+	m.albedo_color = Color(0.08, 0.07, 0.07, 0.8)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.vertex_color_use_as_albedo = true
+	p.material_override = m
+	p.color = Color(0.1, 0.09, 0.09, 0.85)
+	parent.add_child(p)
+	p.global_position = pos + Vector3(0, 1.0, 0)
+	p.emitting = true
+	p.finished.connect(p.queue_free)
 
 
 ## Dawn: run off, and a few seconds later be gone for the day (kept in the list, just switched
@@ -535,6 +620,13 @@ func _physics_process(delta: float) -> void:
 		if _watch_check <= 0.0:
 			_watch_check = 0.1
 			watched = _is_watched()
+		# Stare at it too long and it's simply... not there any more. Then it's behind you.
+		if watched:
+			_stare += delta
+			if _stare > _stare_limit:
+				_vanish_and_reappear()
+		else:
+			_stare = maxf(0.0, _stare - delta * 0.5)
 	match state:
 		State.WANDER:
 			speed = wander_speed
@@ -718,7 +810,13 @@ func _physics_process(delta: float) -> void:
 ## Host -> here: where it is, which way it faces, what it's doing.
 func net_apply(pos: Vector3, rot: float, st: int, w: bool, grab: float, target: int) -> void:
 	var now:= Time.get_ticks_msec() / 1000.0
-	if _net_t > 0.0 and now > _net_t:
+	if _net_t > 0.0 and pos.distance_to(_net_pos) > 6.0:
+		# A teleport (The Rake reappearing behind someone): jump, don't glide.
+		spawn_puff(get_parent(), global_position + Vector3(0, 0.3, 0))
+		global_position = pos
+		_net_vel = Vector3.ZERO
+		spawn_puff(get_parent(), pos + Vector3(0, 0.3, 0))
+	elif _net_t > 0.0 and now > _net_t:
 		_net_vel = (pos - _net_pos) / maxf(now - _net_t, 0.03)
 		_net_vel.y = 0.0
 	else:

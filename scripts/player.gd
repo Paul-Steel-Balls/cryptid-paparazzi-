@@ -687,6 +687,8 @@ func evaluate_from(eye: Vector3, dir: Vector3, up_close: bool = false, exclude: 
 				best["reason"] = "Something's in the way!"
 			continue
 		var v:= float(r["score"]) * Species.pay_mult(GameState.current_map, c.species_id)
+		if c.get("flat_pay") != null and r.get("in_frame", false):
+			v = float(c.get("flat_pay"))   # the UFO: a set price for a clear shot
 		if c.get("paid_out") == true:
 			v = 0.0   # already got the money shot of this one
 		in_frame.append(c.species_id)
