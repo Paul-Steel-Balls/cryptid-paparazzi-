@@ -4,14 +4,16 @@ class_name Terrain
 ## Collision is a trimesh of the exact render mesh, so feet and eyes agree.
 ## height_at() interpolates the same triangles, so props sit flush.
 
-const HALF:= 120.0          # map spans -HALF..HALF on X and Z
+## v0.14: every map is 20% bigger across (44% more ground) than before.
+const SCALE:= 1.2
+const HALF:= 144.0          # map spans -HALF..HALF on X and Z
 const STEP:= 2.0            # grid spacing in metres
-const CAMP:= Vector2(0, 100) # RV / spawn clearing (x, z)
+const CAMP:= Vector2(0, 120) # RV / spawn clearing (x, z)
 const CAMP_FLAT_R:= 16.0
 const CAMP_BLEND_R:= 34.0
-const RIM_START:= 95.0      # beyond this the land rises into a bowl wall
+const RIM_START:= 114.0     # beyond this the land rises into a bowl wall
 
-const LAKE_C:= Vector2(0, -8)    # Lakeside map: centre of the lake
+const LAKE_C:= Vector2(0, -10)   # Lakeside map: centre of the lake
 
 var seed_value:= 0
 var map_id:= "woods"
@@ -82,8 +84,8 @@ func _lake_height(x: float, z: float) -> float:
 	var h:= _hills.get_noise_2d(x, z) * 6.0 + 1.5
 	h += _detail.get_noise_2d(x, z) * 1.2
 	var d:= Vector2(x, z).distance_to(LAKE_C)
-	var r:= 44.0 + _valley.get_noise_2d(x * 0.7, z * 0.7) * 12.0
-	var t:= clampf((d - (r - 16.0)) / 22.0, 0.0, 1.0)
+	var r:= 53.0 + _valley.get_noise_2d(x * 0.6, z * 0.6) * 14.0
+	var t:= clampf((d - (r - 19.0)) / 26.0, 0.0, 1.0)
 	t = t * t * (3.0 - 2.0 * t)
 	h = lerpf(-7.0, maxf(h, water_level + 0.8), t)
 	var edge:= maxf(absf(x), absf(z))

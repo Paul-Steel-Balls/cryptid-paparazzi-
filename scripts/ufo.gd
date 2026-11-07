@@ -1,9 +1,11 @@
 extends PhotoSubject
 class_name UFO
-## The greys' ride. Get photographed by tourists too many times in one night and it comes for you.
-## Snap it before it reaches you for a fortune (it bolts once it's been papped). If it gets over
-## you, the tractor beam lifts you: mash A and D to wriggle free. Fail and you're abducted:
-## camera and undeveloped photos gone, dumped back at camp.
+## The greys' ride. Get photographed by tourists ten times in one night and it comes for you.
+## It doesn't give up: snapping it (worth a bit, once) won't send it away, and you can't outlast
+## it. The only way out is the tractor beam itself: when it gets over you, mash A and D to
+## wriggle free and it leaves you alone for the night. Fail and you're abducted: camera and
+## undeveloped photos gone, dumped back at camp. (Hiding in the RV only makes it wait; it
+## leaves at dawn.)
 
 signal abducted
 signal escaped_beam
@@ -19,7 +21,8 @@ const LIFT_HEIGHT:= 7.5
 const LIFT_TIME:= 6.0        # seconds of beam before you're inside
 const MASH_GAIN:= 0.085      # per alternating A/D press
 const MASH_DECAY:= 0.16      # per second
-const HUNT_TIME:= 80.0       # gives up after this long
+## Already photographed this visit: further photos of it are worth nothing.
+var paid_out:= false
 
 var player: Player
 var terrain: Terrain
@@ -85,12 +88,17 @@ func is_beaming() -> bool:
 	return phase == Phase.BEAM
 
 
-## Photographed: they hate that. Off it goes (one photo per visit).
-func spooked() -> void:
+## Photographed: worth something once, and it doesn't care. It keeps coming.
+func photographed() -> void:
+	paid_out = true
+
+
+## Morning: it's gone with the dark.
+func dawn() -> void:
 	if phase == Phase.LEAVE:
 		return
 	if phase == Phase.BEAM:
-		_release(false)
+		_release(true)
 	_leave()
 
 
@@ -121,9 +129,6 @@ func _process(delta: float) -> void:
 
 
 func _hunt(delta: float) -> void:
-	if _t > HUNT_TIME:
-		_leave()
-		return
 	var target:= player.global_position
 	var to:= Vector3(target.x - global_position.x, 0, target.z - global_position.z)
 	var d:= to.length()

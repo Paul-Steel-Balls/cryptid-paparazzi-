@@ -272,6 +272,8 @@ func _request_world() -> void:
 		"roster": roster, "items": items,
 		"pot": [pot.global_position, pot.taken] if pot != null and is_instance_valid(pot) else [],
 		"santa": santa != null and is_instance_valid(santa) and not santa.is_leaving(),
+		"night_time": main.get("_night_time"),
+		"day": main.get("is_day"),
 	}
 	_world.rpc_id(id, world)
 	_ready_peers[id] = true
@@ -605,6 +607,17 @@ func _santa_snap_req() -> void:
 @rpc("authority", "reliable")
 func _santa_leave() -> void:
 	main.santa_leave()
+
+
+## Host's night ran out: morning for everyone.
+func dawn() -> void:
+	for p in _ready_peers:
+		_dawn.rpc_id(p)
+
+
+@rpc("authority", "reliable")
+func _dawn() -> void:
+	main.begin_dawn()
 
 
 ## Host slept or drove somewhere: everyone goes with them.

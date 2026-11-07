@@ -114,6 +114,7 @@ var _skin:= Color(0.93, 0.74, 0.58)
 
 
 func _ready() -> void:
+	collision_mask |= CityBlocks.PROPS_LAYER   # you bump into street furniture; cryptids don't
 	_camera = $Camera3D
 	_shape_node = $CollisionShape3D
 	_shape = (_shape_node.shape as CapsuleShape3D).duplicate()
@@ -151,10 +152,12 @@ func _input(event: InputEvent) -> void:
 		_yaw -= event.relative.x * sens
 		_pitch = clampf(_pitch - event.relative.y * sens, deg_to_rad(-80.0), deg_to_rad(80.0))
 		_apply_look()
-	if event is InputEventMouseButton and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		if event.button_index == MOUSE_BUTTON_RIGHT:
-			set_aiming(event.pressed)
-		elif event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if event.is_action_pressed("aim"):
+			set_aiming(true)
+		elif event.is_action_released("aim"):
+			set_aiming(false)
+		elif event.is_action_pressed("snap"):
 			if aiming:
 				snap_photo()
 			else:
@@ -630,9 +633,9 @@ func snap_photo() -> void:
 func _all_cryptids() -> Array:
 	var out: Array = []
 	for c in cryptids:
-		if is_instance_valid(c):
+		if is_instance_valid(c) and (c as Node3D).visible:   # gone home at dawn = not there
 			out.append(c)
-	if out.is_empty() and bigfoot_ref != null and is_instance_valid(bigfoot_ref):
+	if out.is_empty() and bigfoot_ref != null and is_instance_valid(bigfoot_ref) and bigfoot_ref.visible:
 		out.append(bigfoot_ref)
 	for e in extra_subjects:
 		if is_instance_valid(e):
@@ -684,6 +687,8 @@ func evaluate_from(eye: Vector3, dir: Vector3, up_close: bool = false, exclude: 
 				best["reason"] = "Something's in the way!"
 			continue
 		var v:= float(r["score"]) * Species.pay_mult(GameState.current_map, c.species_id)
+		if c.get("paid_out") == true:
+			v = 0.0   # already got the money shot of this one
 		in_frame.append(c.species_id)
 		subjects.append(c)
 		raw[c.species_id] = maxi(int(raw.get(c.species_id, 0)), int(r["score"]))

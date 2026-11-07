@@ -54,6 +54,7 @@ func _ready() -> void:
 	await _test_v011()
 	_test_v012()
 	_test_v013()
+	await _test_v014()
 	print("RESULT: %d/%d checks passed" % [_passed, _passed + _failed])
 	if _failed > 0:
 		get_tree().quit(1)
@@ -508,7 +509,7 @@ func _test_terrain() -> void:
 		if absf(t.height_at(x, z) - t._vh(i * 5, i * 3)) > 0.001:
 			grid_ok = false
 	_check("terrain: height_at matches grid vertices", grid_ok)
-	_check("terrain: rim rises at the map edge", t.height_at(0, -118) > t.height_at(0, -60) + 5.0)
+	_check("terrain: rim rises at the map edge", t.height_at(0, -Terrain.HALF + 2.0) > t.height_at(0, -Terrain.HALF * 0.5) + 5.0)
 	t.free()
 
 
@@ -1426,7 +1427,7 @@ func _test_v011() -> void:
 	_check("v011: Methman, Jersey Devil, Crackin' and The Rake live in the City",
 		"methman" in city_all and "jersey_devil" in city_all and "crackin" in city_all and "the_rake" in city_all)
 	_check("v011: the City is the third map", Species.MAP_ORDER == ["woods", "lake", "city"] and Species.next_map("lake") == "city")
-	_check("v011: UFO and Santa pay a fortune", Species.pay_mult("city", "ufo") >= 10.0 and Species.pay_mult("woods", "santa") >= 10.0)
+	_check("v014: Santa pays a fortune, the UFO a modest bonus", Species.pay_mult("woods", "santa") >= 10.0 and Species.pay_mult("city", "ufo") <= 4.0)
 	# The Rake: frozen while you look at it, coming for you when you don't.
 	var holder:= Node3D.new()
 	add_child(holder)
@@ -1466,7 +1467,11 @@ func _test_v011() -> void:
 	ufo.global_position = Vector3(0, UFO.ALTITUDE, 0)
 	pl.extra_subjects = [ufo]
 	var shot:= pl.evaluate_from(Vector3(8, 1.6, 8), (ufo.photo_point() - Vector3(8, 1.6, 8)).normalized())
-	_check("v011: a photo of the UFO is worth ridiculous money", shot.get("species", "") == "ufo" and int(shot.get("value", 0)) >= 600)
+	_check("v014: a UFO photo pays a bit (not a fortune)", shot.get("species", "") == "ufo" and int(shot.get("value", 0)) >= 100 and int(shot.get("value", 0)) <= 400)
+	ufo.photographed()
+	var shot2:= pl.evaluate_from(Vector3(8, 1.6, 8), (ufo.photo_point() - Vector3(8, 1.6, 8)).normalized())
+	_check("v014: ...once: more photos of the same UFO pay nothing", int(shot2.get("value", 0)) == 0)
+	_check("v014: snapping it doesn't send it away", ufo.phase != UFO.Phase.LEAVE)
 	ufo.call("_start_beam")
 	_check("v011: the tractor beam grabs you (controls locked)", ufo.is_beaming() and pl.controls_locked)
 	for i in 6:
@@ -1510,8 +1515,8 @@ func _test_v011() -> void:
 	pot.free()
 	# City: walking round a block of buildings instead of through it.
 	var cb:= CityBlocks.new()
-	var a:= Vector2(-32, 22)
-	var b:= Vector2(-32, 72)
+	var a:= Vector2(-38, CityBlocks.EW_ROADS[1])
+	var b:= Vector2(-38, CityBlocks.EW_ROADS[0])
 	var path:= cb.route(a, b)
 	var ok:= cb.segment_blocked(a, b) and path.size() > 1
 	var prev:= a
@@ -1619,3 +1624,50 @@ func _test_v013() -> void:
 	u.ghost_apply(Vector3(1, 12, 2), false, true, 0.0)
 	_check("v013: ...and leaves when theirs does", u.phase == UFO.Phase.LEAVE)
 	u.free()
+
+
+func _test_v014() -> void:
+	GameState.reset()
+	_check("v014: maps are 20% bigger", is_equal_approx(Terrain.HALF, 144.0) and is_equal_approx(Terrain.RIM_START, 114.0))
+	_check("v014: the UFO comes after 10 tourist photos", (load("res://scripts/main.gd") as GDScript).get_script_constant_map()["UFO_AFTER_FLASHES"] == 10)
+	# Controls: rebind and swap, then reset.
+	GameState.rebind("jump", KEY_E)
+	_check("v014: rebinding a key works", GameState.bindings_of("jump") == [KEY_E] and InputMap.action_has_event("jump", _key(KEY_E)))
+	_check("v014: ...and the action that had it gets the old key (swap)", GameState._index_of_binding(GameState.bindings_of("interact"), KEY_SPACE) >= 0)
+	GameState.rebind("snap", "mouse:3")
+	_check("v014: mouse buttons can be bound", GameState.binding_name(GameState.bindings_of("snap")[0]) == "Middle Mouse")
+	GameState.reset_bindings()
+	_check("v014: reset restores the defaults", GameState.bindings_of("jump") == [KEY_SPACE] and GameState.bindings_of("snap") == ["mouse:1"])
+	# Day and night.
+	GameState.current_map = "woods"
+	var main_node: Node = (load("res://main.tscn") as PackedScene).instantiate()
+	add_child(main_node)
+	await get_tree().process_frame
+	var cs: Array = main_node.get("_cryptids")
+	_check("v014: a night is 15 minutes", is_equal_approx(main_node.NIGHT_LENGTH, 900.0) and not main_node.is_day)
+	main_node.set("_night_time", 899.9)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("v014: then the sun comes up", main_node.is_day)
+	var fleeing:= true
+	for c in cs:
+		if c.state != Cryptid.State.FLEE and c.state != Cryptid.State.TRAPPED:
+			fleeing = false
+	_check("v014: ...and the cryptids head home", fleeing)
+	for c in cs:
+		c.visible = false   # (they vanish 9 s later)
+	var pl: Player = main_node.get("_player")
+	_check("v014: nothing to photograph in daylight", pl.call("_all_cryptids").filter(func(x): return x is Cryptid).is_empty())
+	main_node.free()
+	# Settings live behind a Settings button now.
+	var pm:= PauseMenu.new()
+	add_child(pm)
+	_check("v014: pause menu has Settings and Controls pages", pm.get("_settings_page") != null and pm.get("_controls_page") != null and not pm.get("_settings_page").visible)
+	pm.free()
+	GameState.reset()
+
+
+func _key(k: int) -> InputEventKey:
+	var e:= InputEventKey.new()
+	e.keycode = k as Key
+	return e

@@ -986,6 +986,14 @@ def sfx_coins():
     mix_at(out, sfx_cash() * 0.6, 0.6)
     return out
 
+def sfx_rooster():  # cock-a-doodle-doo, from across the way
+    out = np.zeros(int(2.0 * SR))
+    parts = [(0.0, 0.18, 620, 700), (0.22, 0.16, 760, 820), (0.42, 0.18, 820, 860), (0.64, 0.75, 900, 560)]
+    for k, (st, d, f0, f1) in enumerate(parts):
+        v = voice(d, lambda u, f0=f0, f1=f1: f0 + (f1 - f0) * u, [(0, "o"), (0.5, "u"), (1, "o")], breath=0.4, rough=0.5, scale=1.6, seed=170 + k, jitter=0.05)
+        mix_at(out, v * vshape(len(v), 0.01, 0.08), st)
+    return reverb(lp(out, 3500) * 0.7, 0.5, 1.6)
+
 def amb_city():
     dur = 40.0
     n = int((dur + 1.5) * SR)
@@ -1033,7 +1041,7 @@ SFX = {
     "fhairy_alert": v_fhairy_alert, "fhairy_grunt": v_fhairy_grunt, "leper_alert": v_leper_alert, "leper_grunt": v_leper_grunt,
     "rake_alert": v_rake_alert, "rake_grunt": v_rake_grunt, "bent_alert": v_bent_alert, "bent_grunt": v_bent_grunt,
     "santa_ho": v_santa_ho, "sleigh_bells": sfx_sleigh_bells, "ufo_hum": sfx_ufo_hum, "ufo_zip": sfx_ufo_zip,
-    "tractor": sfx_tractor, "coins": sfx_coins,
+    "tractor": sfx_tractor, "coins": sfx_coins, "rooster": sfx_rooster,
 }
 for i in range(6):
     SFX[f"step_{i+1}"] = (lambda i=i: step_forest(1000 + i * 7))

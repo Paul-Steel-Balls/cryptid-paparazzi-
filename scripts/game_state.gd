@@ -67,6 +67,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	load_game()
 	load_settings()
+	apply_bindings()
 	apply_system_settings()
 
 
@@ -340,32 +341,133 @@ func _init() -> void:
 	_setup_input()
 
 
+## Every rebindable control: [action, label shown in Controls, default bindings].
+## A binding is a key code (int) or "mouse:<button index>".
+const CONTROLS:= [
+	["move_forward", "Move forward", [KEY_W, KEY_UP]],
+	["move_back", "Move back", [KEY_S, KEY_DOWN]],
+	["move_left", "Move left (and break out of a tractor beam)", [KEY_A, KEY_LEFT]],
+	["move_right", "Move right (and break out of a tractor beam)", [KEY_D, KEY_RIGHT]],
+	["sprint", "Sprint", [KEY_SHIFT]],
+	["jump", "Jump", [KEY_SPACE]],
+	["crouch_hold", "Crouch (hold)", [KEY_CTRL]],
+	["crouch_toggle", "Crouch (toggle)", [KEY_C]],
+	["aim", "Raise camera", ["mouse:2"]],
+	["snap", "Take photo (while raised)", ["mouse:1"]],
+	["interact", "Interact / talk / enter RV", [KEY_E]],
+	["use_item", "Use selected item", [KEY_Q]],
+	["select_bait", "Item: bait", [KEY_1]],
+	["select_trap", "Item: trap", [KEY_2]],
+	["select_tripod", "Item: tripod cam", [KEY_3]],
+	["select_joint", "Item: joint", [KEY_4]],
+	["select_beer", "Item: beer", [KEY_5]],
+	["toggle_view", "First / third person", [KEY_V]],
+	["voice_ptt", "Push to talk (online)", [KEY_T]],
+	["restart", "Restart after getting caught", [KEY_R]],
+]
+
+
 func _setup_input() -> void:
-	_add_key("move_forward", [KEY_W, KEY_UP])
-	_add_key("move_back", [KEY_S, KEY_DOWN])
-	_add_key("move_left", [KEY_A, KEY_LEFT])
-	_add_key("move_right", [KEY_D, KEY_RIGHT])
-	_add_key("sprint", [KEY_SHIFT])
-	_add_key("interact", [KEY_E])
-	_add_key("restart", [KEY_R])
-	_add_key("use_item", [KEY_Q])
-	_add_key("voice_ptt", [KEY_T])
-	_add_key("select_bait", [KEY_1])
-	_add_key("select_trap", [KEY_2])
-	_add_key("select_tripod", [KEY_3])
-	_add_key("select_joint", [KEY_4])
-	_add_key("select_beer", [KEY_5])
-	_add_key("toggle_view", [KEY_V])
-	_add_key("jump", [KEY_SPACE])
-	_add_key("crouch_toggle", [KEY_C])
-	_add_key("crouch_hold", [KEY_CTRL])
+	for c in CONTROLS:
+		_bind(str(c[0]), c[2])
 
 
-func _add_key(action: String, keys: Array) -> void:
+## Apply the player's saved rebinds on top of the defaults.
+func apply_bindings() -> void:
+	var custom: Dictionary = settings.get("bindings", {})
+	for c in CONTROLS:
+		var act: String = c[0]
+		_bind(act, custom[act] if custom.has(act) else c[2])
+
+
+func default_bindings(action: String) -> Array:
+	for c in CONTROLS:
+		if c[0] == action:
+			return c[2]
+	return []
+
+
+func bindings_of(action: String) -> Array:
+	var custom: Dictionary = settings.get("bindings", {})
+	return custom[action] if custom.has(action) else default_bindings(action)
+
+
+## Rebind an action to one key/button. Whatever already used it gets this action's old one (a swap).
+func rebind(action: String, binding) -> void:
+	var custom: Dictionary = settings.get("bindings", {}).duplicate()
+	var old: Array = bindings_of(action)
+	for c in CONTROLS:
+		var other: String = c[0]
+		if other == action:
+			continue
+		var theirs: Array = bindings_of(other)
+		var idx:= _index_of_binding(theirs, binding)
+		if idx >= 0:
+			var swapped:= theirs.duplicate()
+			if old.is_empty():
+				swapped.remove_at(idx)
+			else:
+				swapped[idx] = old[0]
+			custom[other] = swapped
+	custom[action] = [binding]
+	settings["bindings"] = custom
+	save_settings()
+	apply_bindings()
+
+
+func reset_bindings() -> void:
+	settings.erase("bindings")
+	save_settings()
+	apply_bindings()
+
+
+static func _index_of_binding(list: Array, binding) -> int:
+	for i in list.size():
+		if _same_binding(list[i], binding):
+			return i
+	return -1
+
+
+static func _same_binding(a, b) -> bool:
+	var a_mouse:= typeof(a) == TYPE_STRING
+	var b_mouse:= typeof(b) == TYPE_STRING
+	if a_mouse or b_mouse:
+		return a_mouse and b_mouse and str(a) == str(b)
+	return int(a) == int(b)
+
+
+## "W", "Shift", "Left Mouse"...
+static func binding_name(binding) -> String:
+	if typeof(binding) == TYPE_STRING and str(binding).begins_with("mouse:"):
+		var b:= int(str(binding).substr(6))
+		return {1: "Left Mouse", 2: "Right Mouse", 3: "Middle Mouse", 8: "Mouse 4", 9: "Mouse 5"}.get(b, "Mouse %d" % b)
+	return OS.get_keycode_string(int(binding))
+
+
+## The binding an input event would make (null if it can't be bound).
+static func binding_from_event(ev: InputEvent):
+	if ev is InputEventKey and ev.pressed and not ev.echo:
+		var k:= (ev as InputEventKey).keycode
+		return int(k) if k != KEY_NONE else int((ev as InputEventKey).physical_keycode)
+	if ev is InputEventMouseButton and ev.pressed:
+		var bi:= (ev as InputEventMouseButton).button_index
+		if bi == MOUSE_BUTTON_WHEEL_UP or bi == MOUSE_BUTTON_WHEEL_DOWN:
+			return null
+		return "mouse:%d" % bi
+	return null
+
+
+func _bind(action: String, list: Array) -> void:
 	if InputMap.has_action(action):
 		InputMap.erase_action(action)
 	InputMap.add_action(action)
-	for k in keys:
-		var ev:= InputEventKey.new()
-		ev.keycode = k
-		InputMap.action_add_event(action, ev)
+	for b in list:
+		if typeof(b) == TYPE_STRING and str(b).begins_with("mouse:"):
+			var mev:= InputEventMouseButton.new()
+			mev.button_index = int(str(b).substr(6)) as MouseButton
+			InputMap.action_add_event(action, mev)
+		else:
+			var kev:= InputEventKey.new()
+			kev.keycode = int(b) as Key
+			InputMap.action_add_event(action, kev)
+

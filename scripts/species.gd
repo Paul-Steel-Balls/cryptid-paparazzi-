@@ -84,7 +84,7 @@ const DATA:= {
 	},
 	## Not on any roster: special visitors (see main.gd). "pay" overrides the tier multiplier.
 	"santa": {"name": "Santa Claus", "model": "res://models/santa_sleigh.glb", "photo_h": 1.4, "pay": 20.0, "behaviour": "visitor"},
-	"ufo": {"name": "UFO", "photo_h": 0.0, "pay": 12.0, "behaviour": "visitor"},   # built in code (scripts/ufo.gd)
+	"ufo": {"name": "UFO", "photo_h": 0.0, "pay": 3.0, "behaviour": "visitor"},   # built in code (scripts/ufo.gd)
 	"wherewolf": {
 		"name": "Where-wolf", "model": "res://models/wherewolf.glb", "outline": 0.012,
 		"radius": 0.4, "height": 2.15, "photo_h": 1.7,

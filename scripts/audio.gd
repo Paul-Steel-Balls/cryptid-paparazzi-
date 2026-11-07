@@ -3,7 +3,7 @@ extends Node
 ## night ambience. Sounds named foo_1..foo_n are variants of "foo".
 
 const SFX:= [
-	"bait_drop", "bent_alert", "bent_grunt", "bigfoot_grunt", "bigfoot_munch", "bigfoot_roar",
+	"rooster", "bait_drop", "bent_alert", "bent_grunt", "bigfoot_grunt", "bigfoot_munch", "bigfoot_roar",
 	"bigstep_1", "bigstep_2", "bigstep_3", "bigstep_4", "boing", "camera_crash",
 	"cash", "cash_tick", "coins", "corn_alert", "corn_grunt", "crackin_alert",
 	"crackin_grunt", "develop", "door", "dry_click", "engine", "escaped",

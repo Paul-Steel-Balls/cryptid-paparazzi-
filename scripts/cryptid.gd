@@ -53,6 +53,7 @@ var _investigate_target:= Vector3.ZERO
 var _investigate_timer:= 0.0
 var _lose_timer:= 0.0
 var _los_blocked_timer:= 0.0
+var _scent_timer:= 0.0
 var _last_known_pos:= Vector3.ZERO
 var _grab_timer:= 0.0
 var _walk_phase:= 0.0
@@ -194,6 +195,8 @@ func is_hostile() -> bool:
 
 
 func hear_noise(pos: Vector3, radius: float = -1.0) -> void:
+	if not visible:
+		return
 	if puppet:
 		if forward.is_valid():
 			forward.call("hear_noise", [pos, radius])
@@ -211,6 +214,8 @@ func hear_noise(pos: Vector3, radius: float = -1.0) -> void:
 
 
 func on_flash(player_pos: Vector3) -> void:
+	if not visible:
+		return
 	if puppet:
 		if forward.is_valid():
 			forward.call("on_flash", [player_pos])
@@ -238,6 +243,8 @@ func on_flash(player_pos: Vector3) -> void:
 ## A tripod cam went off nearby: skittish ones bolt, the rest wander over to see what it was.
 ## (Nobody blames you for it.)
 func on_device_flash(pos: Vector3) -> void:
+	if not visible:
+		return
 	if puppet:
 		if forward.is_valid():
 			forward.call("on_device_flash", [pos])
@@ -305,6 +312,27 @@ func _enter_flee() -> void:
 			Audio.play_3d("shutter", global_position, -2.0)
 		if _has_line_of_sight():
 			flashed_player.emit()
+
+
+## Dawn: run off, and a few seconds later be gone for the day (kept in the list, just switched
+## off, so the online copies stay in step).
+func go_home_for_the_day() -> void:
+	if not visible:
+		return
+	if not puppet:
+		_grab_timer = 0.0
+		grab_progress = 0.0
+		if state != State.TRAPPED:
+			_enter_flee()
+	get_tree().create_timer(9.0).timeout.connect(func():
+		visible = false
+		set_physics_process(false)
+		set_process(false)
+		collision_layer = 0
+		collision_mask = 0
+		_hide_label()
+		if _voice:
+			_voice.stop())
 
 
 ## Online: after grabbing someone, let go and wander off (the night doesn't end for everyone).
@@ -550,11 +578,18 @@ func _physics_process(delta: float) -> void:
 					_los_blocked_timer = 0.0
 				else:
 					_los_blocked_timer += delta
+					# In the City you duck round a corner, not into a thicket: they follow
+					# your footsteps round the block for a while.
+					if city != null and d < 35.0:
+						_scent_timer -= delta
+						if _scent_timer <= 0.0:
+							_scent_timer = 1.2
+							_last_known_pos = player_ref.global_position
 				if d > lose_dist:
 					_lose_timer += delta
 				else:
 					_lose_timer = 0.0
-				if _lose_timer > distance_lose_time or _los_blocked_timer > los_break_time:
+				if _lose_timer > distance_lose_time or _los_blocked_timer > los_break_time * (1.8 if city != null else 1.0):
 					state = State.WANDER
 					_hide_label()
 					_grab_timer = 0.0

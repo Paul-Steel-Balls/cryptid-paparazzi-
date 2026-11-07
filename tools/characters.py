@@ -870,55 +870,54 @@ def toe_rogan():
     ch = Character("toe_rogan", s, voxel=0.013)
     jeans = speckle((0.18, 0.24, 0.4), 0.08, 40)
     toe_skin = (0.95, 0.74, 0.62)
-    # Bold, flat red tee with a white "big toe" print and white collar/hems so it reads at night.
+    # Bold red V-neck tee with a white "big toe" print and white hems so it reads at night.
     tee_red = np.array([0.72, 0.08, 0.08])
     def tee(p):
         out = np.tile(tee_red, (len(p), 1))
-        logo = ((p[:, 0] / 0.07) ** 2 + ((p[:, 1] - 0.96) / 0.08) ** 2 < 1.0) & (p[:, 2] > 0.1)
-        nail = ((p[:, 0] / 0.04) ** 2 + ((p[:, 1] - 0.995) / 0.035) ** 2 < 1.0) & (p[:, 2] > 0.1)
+        logo = ((p[:, 0] / 0.065) ** 2 + ((p[:, 1] - 0.86) / 0.075) ** 2 < 1.0) & (p[:, 2] > 0.1)
+        nail = ((p[:, 0] / 0.036) ** 2 + ((p[:, 1] - 0.893) / 0.032) ** 2 < 1.0) & (p[:, 2] > 0.1)
         out[logo] = (0.97, 0.95, 0.9)
         out[nail] = (0.95, 0.6, 0.6)
-        out[(p[:, 1] > 1.075)] = (0.97, 0.95, 0.9)    # collar
+        # the V: skin shows through at the front, with a slightly darker trim along its edge
+        vy = 1.0 + 1.25 * np.abs(p[:, 0])
+        front = p[:, 2] > 0.02
+        out[front & (p[:, 1] > vy)] = toe_skin
+        out[front & (p[:, 1] > vy - 0.018) & (p[:, 1] <= vy)] = tee_red * 0.7
         out[(p[:, 1] < 0.71)] = (0.97, 0.95, 0.9)     # hem
         return out
+    # THE HEAD IS THE TOE (Thumb-Thumb style): one tall, straight, smooth column of skin rising
+    # out of the V-neck, domed on top, a big oval nail on the upper front, two knuckle creases
+    # across the middle. No face at all.
     def toe_col(p):
-        y = p[:, 1]
+        x, y, z = p[:, 0], p[:, 1], p[:, 2]
         out = np.tile(np.array(toe_skin), (len(p), 1))
-        tip = np.clip((y - 1.38) / 0.18, 0, 1)[:, None]
-        out = out * (1 - 0.18 * tip) + np.array([0.98, 0.55, 0.5]) * 0.18 * tip  # rosy tip
-        for cy in (1.215, 1.24):  # joint creases on the front
-            crease = (np.abs(y - cy - 0.02 * np.abs(p[:, 0]) * 6) < 0.0045) & (p[:, 2] > 0.06)
-            out[crease] = (0.72, 0.48, 0.4)
-        return np.clip(out * (1 + 0.04 * vnoise(p, 35, 2.0))[:, None], 0, 1)
-    # THE TOE: thick and slightly hooked forward, wider at the base like a real big toe
-    ch.add(capsule((0, 1.16, 0.0), (0, 1.38, 0.025), 0.165, "head", toe_col, rb=0.17, k=0.05))
-    ch.add(capsule((0, 1.38, 0.025), (0, 1.5, 0.075), 0.17, "head", toe_col, rb=0.15, k=0.06))
-    ch.add(ellipsoid((0, 1.29, 0.1), (0.15, 0.07, 0.08), "head", toe_col, k=0.05))  # knuckle pad
-    # toenail on the upper front, with a pale moon
+        tip = np.clip((y - 1.42) / 0.2, 0, 1)[:, None]
+        out = out * (1 - 0.12 * tip) + np.array([0.98, 0.62, 0.56]) * 0.12 * tip   # a little rosier up top
+        for cy in (1.324, 1.362):   # knuckle creases, curving down at the sides
+            crease = (np.abs(y - cy + 0.9 * x * x) < 0.006) & (z > 0.06) & (np.abs(x) < 0.125)
+            out[crease] = (0.8, 0.58, 0.5)
+        # cuticle: a soft darker ring just outside the nail
+        nx, ny = x / 0.112, (y - 1.505) / 0.132
+        rim = (nx * nx + ny * ny < 1.0) & (z > 0.05)
+        out[rim] = out[rim] * 0.9 + np.array([0.85, 0.5, 0.45]) * 0.1
+        return np.clip(out * (1 + 0.025 * vnoise(p, 30, 2.0))[:, None], 0, 1)
+    ch.add(capsule((0, 1.04, -0.005), (0, 1.22, -0.005), 0.16, "neck", toe_col, k=0.01))
+    ch.add(capsule((0, 1.2, -0.005), (0, 1.465, -0.005), 0.155, "head", toe_col, rb=0.16, k=0.05))
+    # knuckle folds: soft bulges between the creases
+    for cy, sx in ((1.305, 0.11), (1.343, 0.115)):
+        ch.add(ellipsoid((0, cy, 0.118), (sx, 0.016, 0.042), "head", toe_col, k=0.016))
     def nail_col(p):
-        out = np.tile(np.array([0.96, 0.76, 0.74]), (len(p), 1))
-        moon = p[:, 1] < 1.5
-        out[moon] = (0.99, 0.9, 0.86)
-        tipe = p[:, 1] > 1.68
-        out[tipe] = (0.99, 0.96, 0.9)
-        ridge = np.abs(np.sin(p[:, 0] * 90)) < 0.08   # faint lengthwise ridges
-        out[ridge] = out[ridge] * 0.94
+        y = p[:, 1]
+        out = np.tile(np.array([0.93, 0.7, 0.68]), (len(p), 1))
+        out[y < 1.43] = (0.95, 0.8, 0.77)         # paler moon at the base
+        out[y > 1.605] = (0.96, 0.86, 0.8)        # free edge over the top
+        ridge = np.abs(np.sin(p[:, 0] * 80)) < 0.07
+        out[ridge] = out[ridge] * 0.97
         return out
-    # Big oblong nail plate on the top-front (Thumb-Thumb style): a raised, glossy plate with a
-    # darker cuticle rim around it and a pale free edge over the top.
-    ch.add(ellipsoid((0, 1.585, 0.16), (0.118, 0.155, 0.03), "head", (0.82, 0.52, 0.48), rot=(-0.72, 0, 0), k=0.006))   # cuticle rim
-    ch.add(ellipsoid((0, 1.592, 0.172), (0.105, 0.142, 0.032), "head", nail_col, rot=(-0.72, 0, 0), k=0.004, mat="shiny"))
-    # a few knuckle hairs
-    for i, x in enumerate((-0.05, -0.015, 0.02, 0.055)):
-        a = np.array([x, 1.49, 0.2]); b = a + np.array([0.01 * (i - 1.5), 0.035, 0.012])
-        ch.add(capsule(a, b, 0.004, "head", (0.25, 0.16, 0.1), k=0.0, mat="shiny"))
-    # small beady eyes and a flat little mouth under the nail
-    cartoon_eyes(ch, "head", 1.42, 0.192, 0.055, 0.024, pupil_scale=0.55)
-    ch.add(mirror(lambda x: capsule((x * 0.03, 1.458, 0.2), (x * 0.085, 1.452, 0.188), 0.008, "head", (0.4, 0.26, 0.2), k=0.004)))  # brows
-    ch.add(capsule((-0.04, 1.335, 0.186), (0.04, 1.335, 0.186), 0.009, "head", (0.55, 0.25, 0.25), k=0.004))  # mouth
-    # huge traps, chest, lats in a tight black tee
-    ch.add(capsule((0, 1.06, 0), (0, 1.18, 0.0), 0.12, "neck", toe_skin, k=0.04))
-    ch.add(mirror(lambda x: capsule((x * 0.06, 1.12, -0.02), (x * 0.25, 1.06, -0.01), 0.085, "chest", tee, k=0.06)))
+    # the nail: a broad oval plate following the front curve and tipping back over the dome
+    ch.add(ellipsoid((0, 1.505, 0.098), (0.1, 0.128, 0.05), "head", nail_col, rot=(-0.32, 0, 0), k=0.016))
+    # huge traps, chest, lats in the tee
+    ch.add(mirror(lambda x: capsule((x * 0.06, 1.1, -0.02), (x * 0.25, 1.06, -0.01), 0.085, "chest", tee, k=0.03)))
     ch.add(ellipsoid((0, 0.94, -0.01), (0.31, 0.17, 0.17), "chest", tee, k=0.06))
     ch.add(mirror(lambda x: ellipsoid((x * 0.12, 0.96, 0.11), (0.13, 0.095, 0.075), "chest", tee, k=0.04)))  # pecs
     ch.add(ellipsoid((0, 0.8, 0.02), (0.22, 0.13, 0.15), "spine", tee, k=0.06))  # lats taper
@@ -928,8 +927,8 @@ def toe_rogan():
     # arms: shoulder caps in the tee, then big bare arms with bulging biceps
     for side, x in (("l", -1), ("r", 1)):
         sh, el, hd = H(s, f"shoulder_{side}"), H(s, f"elbow_{side}"), H(s, f"hand_{side}")
-        ch.add(ellipsoid(sh + np.array([x * 0.02, -0.03, 0]), (0.11, 0.1, 0.1), f"shoulder_{side}", tee, k=0.05))
-        ch.add(capsule(sh, el, 0.085, f"shoulder_{side}", toe_skin, rb=0.07, k=0.04))
+        ch.add(ellipsoid(sh + np.array([x * 0.03, -0.045, 0]), (0.115, 0.115, 0.105), f"shoulder_{side}", tee, k=0.012))   # sleeve
+        ch.add(capsule(sh + (el - sh) * 0.25, el, 0.085, f"shoulder_{side}", toe_skin, rb=0.07, k=0.012))
         ch.add(ellipsoid((sh + el) * 0.5 + np.array([0, -0.01, 0.04]), (0.07, 0.085, 0.065), f"shoulder_{side}", toe_skin, k=0.03))  # bicep
         ch.add(capsule(el, hd, 0.07, f"elbow_{side}", toe_skin, rb=0.05, k=0.03))
         hand(ch, f"hand_{side}", hd + np.array([0, -0.045, 0.0]), 0.05, toe_skin, side=-x)
