@@ -21,8 +21,6 @@ var fr:= 0
 func _process(d):
 	t += d
 	fr += 1
-	if fr % 100 == 0 and role == "client":
-		print("CLIENT t=", snapped(t, 0.1), " fr=", fr)
 	var m = current_scene
 	if role == "host" and phase == 0 and t > 0.5 and not net.online():
 		net.host_game(24690)
@@ -59,6 +57,27 @@ func _process(d):
 		Input.action_release("move_forward")
 		var cs = m.get("_cryptids")
 		print("CLIENT after noise: c0 state=", cs[0].state if cs.size() > 0 else -1, " bait_here=", get_nodes_in_group("bait").size(), " my pos=", p.global_position.snapped(Vector3.ONE * 0.1))
+	if t > 15.0 and not has_meta("voiced") and m.get("_net") != null:
+		set_meta("voiced", true)
+		var ML = load("res://scripts/mic_listener.gd")
+		var sine:= PackedFloat32Array()
+		for i in 320:
+			sine.append(sin(i * 0.2) * 0.5)
+		for k in 10:
+			m.get("_net").send_voice(ML.encode(sine))
+	if role == "client" and t > 15.2 and not has_meta("props") and m.get("_net") != null:
+		set_meta("props", true)
+		gs.tripods = 1
+		m.get("_player").select_item("tripod")
+		m.get("_player").use_item()
+		m.call("_summon_ufo")
+	if role == "host" and t > 17.5 and not has_meta("props_report"):
+		set_meta("props_report", true)
+		print("HOST sees client tripods=", m.get("_net")._ghost_tripods.size(), " client ufos=", m.get("_net")._ghost_ufos.size())
+	if t > 17.8 and not has_meta("voice_report") and m.get("_net") != null:
+		set_meta("voice_report", true)
+		for id in m.get("_net").remotes:
+			print(role.to_upper(), " heard ", m.get("_net").remotes[id].voice_samples, " voice samples from ", id)
 	if role == "host" and phase == 0 and t > 18.5:
 		phase = 1
 		var cs = m.get("_cryptids")

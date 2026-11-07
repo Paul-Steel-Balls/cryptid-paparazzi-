@@ -33,6 +33,13 @@ var _ending:= false
 var _cutscene:= false
 var _interact_cool:= 0.0
 var _night_time:= 0.0
+## Day/night: a night lasts NIGHT_LENGTH; then dawn breaks, the cryptids go home and it stays
+## day until you sleep in the RV.
+const NIGHT_LENGTH:= 900.0
+const DAWN_TIME:= 30.0
+var is_day:= false
+var _day_t:= 0.0           # 0 = night look, 1 = full day look
+var _night_look: Dictionary = {}
 var _need_aim_cool:= 0.0
 var _was_third_person:= false
 var _music_state:= ""
@@ -41,8 +48,9 @@ var _rng:= RandomNumberGenerator.new()
 ## Special visitors and loot (see scripts/ufo.gd, santa.gd, pot_of_gold.gd).
 var _ufo: UFO
 var _ufo_done:= false
+var _ufo_share_t:= 0.0
 var _tourist_flashes:= 0
-const UFO_AFTER_FLASHES:= 3
+const UFO_AFTER_FLASHES:= 10
 var _santa: Santa
 var _pot: PotOfGold
 var _peds: Array = []
@@ -176,6 +184,7 @@ func _ready() -> void:
 	_net = NetSync.new()
 	_net.setup(self)
 	add_child(_net)
+	_mic.voice_chunk.connect(_net.send_voice)
 	Net.left_game.connect(_on_left_game)
 	Net.players_changed.connect(_update_net_label)
 	_update_net_label()
@@ -470,6 +479,12 @@ func _spawn_santa() -> void:
 	_player.extra_subjects.append(_santa)
 
 
+## Another player photographed the UFO that's after me: that was its one paid photo.
+func spook_my_ufo() -> void:
+	if _ufo != null and is_instance_valid(_ufo):
+		_ufo.photographed()
+
+
 func santa_leave() -> void:
 	if _santa != null and is_instance_valid(_santa):
 		_santa.take_off()
@@ -487,8 +502,10 @@ func _summon_ufo() -> void:
 	_player.extra_subjects.append(_ufo)
 	_ufo.abducted.connect(_on_abducted)
 	_ufo.escaped_beam.connect(func(): _hud.show_message("You wriggled free! It's had enough of you for one night."))
-	_ufo.left.connect(func(): _ufo = null)
-	_hud.show_message("A low hum overhead... THEY'RE COMING FOR YOU. Snap it before it gets you — or run!")
+	_ufo.left.connect(func():
+		_ufo = null
+		_net.ufo_gone())
+	_hud.show_message("A low hum overhead... THEY'RE COMING FOR YOU. It won't stop: when the beam grabs you, MASH A + D!")
 
 
 ## The beam got you all the way up.
@@ -573,11 +590,15 @@ func gold_result(ok: bool) -> void:
 
 ## The cryptid that matters most right now for the HUD.
 func _focus() -> Cryptid:
+	if is_day:
+		return null   # they're all going home; no alerts
 	var best: Cryptid = null
 	var best_rank:= -1
 	var best_d:= 1e9
 	var rank:= {Cryptid.State.CHASE: 5, Cryptid.State.TRAPPED: 4, Cryptid.State.EATING: 3, Cryptid.State.FLEE: 2, Cryptid.State.INVESTIGATE: 1}
 	for c in _cryptids:
+		if not c.visible:
+			continue
 		var r: int = rank.get(c.state, 0)
 		if Net.online() and c.state == Cryptid.State.CHASE and _net.target_id(c) != Net.my_id() and c.net_target != Net.my_id():
 			r = 2   # it's after somebody else
@@ -620,10 +641,16 @@ func _process(delta: float) -> void:
 		_fireflies.visible = not _player.indoors
 	if GameState.game_over or _ending:
 		return
-	_night_time += delta
+	if not is_day:
+		_night_time += delta
+		if _night_time >= NIGHT_LENGTH and Net.has_authority():
+			begin_dawn()
+	else:
+		_day_t = minf(1.0, _day_t + delta / DAWN_TIME)
+		_apply_daylight(_day_t)
 	_interact_cool = maxf(0.0, _interact_cool - delta)
 	_need_aim_cool = maxf(0.0, _need_aim_cool - delta)
-	_hud.set_night_time(_night_time)
+	_hud.set_clock(is_day, maxf(0.0, NIGHT_LENGTH - _night_time))
 	_update_effects()
 	var act:= _interaction()
 	var labels:= {"toe": "Talk to Toe Rogan", "shop": "Bait & trap stand", "rv": "Enter the RV", "gold": "Grab the pot of gold"}
@@ -643,8 +670,13 @@ func _process(delta: float) -> void:
 		])
 	_hud.set_flash_charge(_player.flash_ready_fraction())
 	_hud.set_struggle(_ufo.struggle if _ufo != null and is_instance_valid(_ufo) and _ufo.is_beaming() else -1.0)
+	if _ufo != null and is_instance_valid(_ufo) and Net.online():
+		_ufo_share_t -= delta
+		if _ufo_share_t <= 0.0:
+			_ufo_share_t = 0.1
+			_net.share_ufo(_ufo)
 	if _mic != null:
-		_hud.set_mic(_mic.level if _mic.active else -1.0, _mic.radius)
+		_hud.set_mic(_mic.level if _mic.active else -1.0, _mic.radius, _mic.transmitting)
 	# Toe Rogan looks over when you come near.
 	if _toe_model and not _poster.is_open() and not _cutscene:
 		_toe_model.play("talk" if _player.global_position.distance_to(_toe.global_position) < 8.0 else "idle")
@@ -657,7 +689,7 @@ func _process(delta: float) -> void:
 		Audio.set_music(want)
 	if ufo_on and not _player.indoors:
 		var ud:= Vector2(_ufo.global_position.x - _player.global_position.x, _ufo.global_position.z - _player.global_position.z).length()
-		_hud.set_alert("UFO INCOMING — %dm!  Snap it before it gets you!" % int(ud) if not _ufo.is_beaming() else "", Color(0.5, 1.0, 0.55))
+		_hud.set_alert("UFO INCOMING — %dm!  Get ready to mash A + D!" % int(ud) if not _ufo.is_beaming() else "", Color(0.5, 1.0, 0.55))
 		_hud.set_danger(true)
 		_hud.hide_hint()
 		_hud.set_grab_warning(false)
@@ -705,7 +737,7 @@ func _process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if GameState.game_over and event is InputEventKey and event.keycode == KEY_R and event.pressed:
+	if GameState.game_over and event.is_action_pressed("restart"):
 		_on_next_night()
 
 
@@ -720,9 +752,15 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _on_photo_taken(result: Dictionary) -> void:
 	var who: Array = result.get("species_list", [])
-	if "ufo" in who and _ufo != null and is_instance_valid(_ufo):
-		_ufo.spooked()
-		_hud.show_message("YOU GOT THE UFO!! It's bolting — that one's worth a fortune.")
+	if "ufo" in who:
+		for subj in result.get("subjects", []):
+			if subj is UFO and not (subj as UFO).paid_out:
+				(subj as UFO).photographed()
+				if (subj as UFO).ghost:
+					_net.ufo_snapped((subj as UFO).ghost_owner)
+					_hud.show_message("You got a shot of %s's UFO!" % Net.name_of((subj as UFO).ghost_owner))
+				else:
+					_hud.show_message("Got the UFO on film! ...It's still coming. Get ready to fight the beam: mash A + D!")
 	if "santa" in who and _santa != null and is_instance_valid(_santa):
 		_santa.take_off()
 		if Net.online():
@@ -786,6 +824,7 @@ func _on_item_placed(kind: String, node: Node3D) -> void:
 		return
 	if kind == "tripod":
 		(node as Tripod).fired.connect(_on_tripod_fired.bind(node))
+		_net.share_tripod(node as Tripod)
 		_hud.show_message("Tripod cam set. It'll snap the first thing that walks in front of it. Stay out of its way.")
 	elif kind == "trap":
 		(node as Trap).sprung.connect(_on_trap_sprung.bind(node))
@@ -888,8 +927,8 @@ func _on_flashed_by_tourist(c: Cryptid) -> void:
 func flashed_by_tourist_remote(d: float) -> void:
 	_player.stun(d)
 	_tourist_flashes += 1
-	if _tourist_flashes == UFO_AFTER_FLASHES - 1 and not _ufo_done:
-		_hud.show_message("Another grey snapped you. They're starting to take a real interest in you...")
+	if _tourist_flashes in [UFO_AFTER_FLASHES - 3, UFO_AFTER_FLASHES - 1] and not _ufo_done:
+		_hud.show_message("Another grey snapped you (%d tonight). They're taking a real interest in you..." % _tourist_flashes)
 	elif _tourist_flashes >= UFO_AFTER_FLASHES and not _ufo_done and _ufo == null:
 		_summon_ufo()
 	else:
@@ -1537,6 +1576,57 @@ func _apply_quality() -> void:
 
 ## The moon disc sits exactly where the moonlight comes from (so shadows point away from it)
 ## and travels with the camera like a real sky object.
+## Morning. Everyone (online too) gets it at the same moment the host's night runs out.
+func begin_dawn(instant: bool = false) -> void:
+	if is_day:
+		return
+	is_day = true
+	_day_t = 1.0 if instant else 0.0
+	if Net.is_host():
+		_net.dawn()
+	for c in _cryptids:
+		if is_instance_valid(c):
+			c.go_home_for_the_day()
+	if _ufo != null and is_instance_valid(_ufo):
+		_ufo.dawn()
+	if _santa != null and is_instance_valid(_santa):
+		_santa.take_off()
+	if _fireflies:
+		_fireflies.emitting = false
+	if instant:
+		_apply_daylight(1.0)
+	else:
+		Audio.play("rooster", -6.0)
+		_hud.show_title("MORNING", "The cryptids are heading home. Sleep in the RV to start the next night.")
+		_hud.show_message("The sun's coming up. Nothing comes out in daylight: develop your film, shop, then sleep in the RV for night %d." % (GameState.night + 1))
+
+
+## 0 = the map's night, 1 = daytime: sky, light, fog, moon -> sun.
+func _apply_daylight(t: float) -> void:
+	if _env == null or _moon == null:
+		return
+	if _night_look.is_empty():
+		_night_look = {"sky": _env.background_color, "amb": _env.ambient_light_color, "amb_e": _env.ambient_light_energy,
+			"fog": _env.fog_light_color, "fog_d": _env.fog_density, "light": _moon.light_color, "light_e": _moon.light_energy,
+			"rot": _moon.rotation_degrees}
+	var k:= smoothstep(0.0, 1.0, t)
+	var city:= _terrain != null and _terrain.is_city
+	var day_sky:= Color(0.55, 0.68, 0.85) if city else Color(0.48, 0.7, 0.95)
+	_env.background_color = (_night_look["sky"] as Color).lerp(day_sky, k)
+	_env.ambient_light_color = (_night_look["amb"] as Color).lerp(Color(0.7, 0.73, 0.8), k)
+	_env.ambient_light_energy = lerpf(_night_look["amb_e"], 0.7, k)
+	_env.fog_light_color = (_night_look["fog"] as Color).lerp(Color(0.72, 0.78, 0.86), k)
+	_env.fog_density = lerpf(_night_look["fog_d"], 0.0015, k)
+	_moon.light_color = (_night_look["light"] as Color).lerp(Color(1.0, 0.95, 0.85), k)
+	_moon.light_energy = lerpf(_night_look["light_e"], 1.1, k)
+	_moon.rotation_degrees = (_night_look["rot"] as Vector3).lerp(Vector3(-62, -35, 0), k)
+	if _moon_disc:
+		_moon_disc.visible = k < 0.6
+	var stars:= get_node_or_null("Stars") as Node3D
+	if stars:
+		stars.visible = k < 0.4
+
+
 func _place_moon(eye: Vector3) -> void:
 	if _moon and _moon_disc:
 		_moon_disc.global_position = eye + _moon.global_transform.basis.z * 380.0
@@ -1650,6 +1740,11 @@ func build_puppet_world(w: Dictionary) -> void:
 			_pot.take()
 	if bool(w.get("santa", false)) and _santa == null:
 		_spawn_santa()
+	_night_time = float(w.get("night_time", 0.0))
+	if bool(w.get("day", false)):
+		begin_dawn(true)
+		for c in _cryptids:
+			c.visible = false
 	_hud.show_message("Joined %s's game. %d players." % [Net.name_of(1), Net.players.size()])
 
 
@@ -1693,6 +1788,13 @@ func _on_left_game(reason: String) -> void:
 func _update_net_label() -> void:
 	if _hud == null:
 		return
+	var body:= _player.get("_body_model") as CharacterModel
+	if body and Net.online() and Net.players.has(Net.my_id()):
+		Player.set_cap_color(body, Net.color_of(Net.my_id()))
+		var cap:= body.find_child("TeamCap", true, false)
+		if cap:
+			for c in cap.get_children():
+				(c as MeshInstance3D).layers = Player.LAYER_BODY
 	if not Net.online():
 		_hud.set_net_status("")
 		return

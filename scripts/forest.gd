@@ -25,6 +25,10 @@ func _init(p_seed: int = 0, p_map: String = "woods") -> void:
 		rng.randomize()
 	map_id = p_map
 	style = Species.style(p_map)
+	# Bigger maps (Terrain.SCALE): keep the same density of plants and rocks.
+	for k in ["trees", "bushes", "ferns", "mushrooms", "flowers", "rocks"]:
+		if style.has(k):
+			style[k] = int(round(float(style[k]) * Terrain.SCALE * Terrain.SCALE))
 	terrain = Terrain.new(rng.randi(), p_map)
 	terrain.name = "Terrain"
 

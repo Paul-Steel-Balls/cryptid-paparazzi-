@@ -1,9 +1,11 @@
 extends PhotoSubject
 class_name UFO
-## The greys' ride. Get photographed by tourists too many times in one night and it comes for you.
-## Snap it before it reaches you for a fortune (it bolts once it's been papped). If it gets over
-## you, the tractor beam lifts you: mash A and D to wriggle free. Fail and you're abducted:
-## camera and undeveloped photos gone, dumped back at camp.
+## The greys' ride. Get photographed by tourists ten times in one night and it comes for you.
+## It doesn't give up: snapping it (worth a bit, once) won't send it away, and you can't outlast
+## it. The only way out is the tractor beam itself: when it gets over you, mash A and D to
+## wriggle free and it leaves you alone for the night. Fail and you're abducted: camera and
+## undeveloped photos gone, dumped back at camp. (Hiding in the RV only makes it wait; it
+## leaves at dawn.)
 
 signal abducted
 signal escaped_beam
@@ -19,10 +21,15 @@ const LIFT_HEIGHT:= 7.5
 const LIFT_TIME:= 6.0        # seconds of beam before you're inside
 const MASH_GAIN:= 0.085      # per alternating A/D press
 const MASH_DECAY:= 0.16      # per second
-const HUNT_TIME:= 80.0       # gives up after this long
+## Already photographed this visit: further photos of it are worth nothing.
+var paid_out:= false
 
 var player: Player
 var terrain: Terrain
+## Online: a copy of another player's UFO (it isn't hunting you; you can still photograph it).
+var ghost:= false
+var ghost_owner:= 0
+var _ghost_target:= Vector3.ZERO
 var phase: int = Phase.ARRIVE
 ## 0..1 how close you are to breaking free.
 var struggle:= 0.0
@@ -81,12 +88,17 @@ func is_beaming() -> bool:
 	return phase == Phase.BEAM
 
 
-## Photographed: they hate that. Off it goes (one photo per visit).
-func spooked() -> void:
+## Photographed: worth something once, and it doesn't care. It keeps coming.
+func photographed() -> void:
+	paid_out = true
+
+
+## Morning: it's gone with the dark.
+func dawn() -> void:
 	if phase == Phase.LEAVE:
 		return
 	if phase == Phase.BEAM:
-		_release(false)
+		_release(true)
 	_leave()
 
 
@@ -99,6 +111,9 @@ func _process(delta: float) -> void:
 		var m:= _lights[i].material_override as StandardMaterial3D
 		var on:= int(_t * 6.0 + i) % 3 == 0
 		m.emission_energy_multiplier = 4.0 if on else 0.6
+	if ghost:
+		global_position = global_position.lerp(_ghost_target, clampf(delta * 8.0, 0.0, 1.0))
+		return
 	if player == null or not is_instance_valid(player):
 		return
 	match phase:
@@ -114,9 +129,6 @@ func _process(delta: float) -> void:
 
 
 func _hunt(delta: float) -> void:
-	if _t > HUNT_TIME:
-		_leave()
-		return
 	var target:= player.global_position
 	var to:= Vector3(target.x - global_position.x, 0, target.z - global_position.z)
 	var d:= to.length()
@@ -180,6 +192,18 @@ func _beam_tick(delta: float) -> void:
 		_release(false)
 		abducted.emit()
 		_leave()
+
+
+func ghost_apply(pos: Vector3, beaming: bool, leaving: bool, p_lift: float) -> void:
+	_ghost_target = pos
+	_beam.visible = beaming
+	_beam_light.visible = beaming
+	lift = p_lift
+	if leaving and phase != Phase.LEAVE:
+		phase = Phase.LEAVE
+		state = PhotoScoring.CryptidState.FLEE
+	elif not leaving:
+		phase = Phase.BEAM if beaming else Phase.HUNT
 
 
 ## One press while in the beam. Only alternating presses count (A, D, A, D...).

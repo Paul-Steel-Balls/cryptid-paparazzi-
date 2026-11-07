@@ -12,20 +12,21 @@ class_name CityBlocks
 const ROAD_HALF:= 5.0        # asphalt half-width
 const WALK:= 2.5             # sidewalk width each side
 const STREET_HALF:= ROAD_HALF + WALK
-const NS_ROADS:= [-64.0, 0.0, 64.0]   # x of the north-south streets
-const EW_ROADS:= [72.0, 22.0, -50.0]  # z of the east-west streets
-const EDGE:= 95.0
-const RIVER_Z:= -71.0        # river centre line (runs east-west)
+const NS_ROADS:= [-77.0, 0.0, 77.0]   # x of the north-south streets
+const EW_ROADS:= [86.0, 26.0, -60.0]  # z of the east-west streets
+const EDGE:= 114.0
+const OUTER:= 139.0         # the skyline wall runs from EDGE out to here
+const RIVER_Z:= -85.0        # river centre line (runs east-west)
 const RIVER_BED_HALF:= 7.0
 const RIVER_BANK:= 4.0
 const WATER:= -1.6
 const BRIDGE_HALF:= 6.0      # half-width of the bridge deck (on the x = 0 street)
-const BRIDGE_Z0:= -87.0
-const BRIDGE_Z1:= -56.0
-const OVERPASS_Z:= -30.0
+const BRIDGE_Z0:= -104.0
+const BRIDGE_Z1:= -67.0
+const OVERPASS_Z:= -36.0
 const OVERPASS_HALF:= 8.0
 const OVERPASS_Y:= 7.0
-const CAMP_LOT:= Rect2(-20, 80, 40, 40)
+const CAMP_LOT:= Rect2(-20, 98, 40, 40)
 
 ## Building footprints and other no-go areas for cryptids (x, z rects).
 var blockers: Array[Rect2] = []
@@ -40,6 +41,10 @@ var rng:= RandomNumberGenerator.new()
 var _building_mat: ShaderMaterial
 var _concrete: StandardMaterial3D
 var _colliders: StaticBody3D
+## Street furniture (cars, trees, stands, pillars): solid for you, but cryptids slip past it
+## (collision layer 2) so a chase never snags on a parked car or a sidewalk tree.
+var _props: StaticBody3D
+const PROPS_LAYER:= 2
 var _sidewalk_trees: Array[Transform3D] = []
 var _lamp_spots: Array[Vector3] = []
 
@@ -83,9 +88,9 @@ static func ground_color(x: float, z: float) -> Color:
 	var dz:= absf(z - RIVER_Z)
 	if dz < RIVER_BED_HALF + RIVER_BANK:
 		return Color(0.26, 0.24, 0.2).lerp(Color(0.2, 0.3, 0.18), clampf((dz - RIVER_BED_HALF) / RIVER_BANK, 0.0, 1.0))
-	if x > 7.5 and x < 56.5 and z > 29.5 and z < 64.5:
+	if x > 7.5 and x < 69.5 and z > 33.5 and z < 78.5:
 		return Color(0.18, 0.36, 0.17)   # the park
-	if z < -57.5 and z > RIVER_Z + RIVER_BED_HALF + RIVER_BANK - 0.5:
+	if z < -67.5 and z > RIVER_Z + RIVER_BED_HALF + RIVER_BANK - 0.5:
 		return Color(0.2, 0.34, 0.18)    # riverside lawn
 	if z < RIVER_Z - RIVER_BED_HALF - RIVER_BANK:
 		return Color(0.21, 0.33, 0.19)   # north bank
@@ -95,12 +100,13 @@ static func ground_color(x: float, z: float) -> Color:
 # ------------------------------------------------------------------ plan: blocks, nav
 
 func _plan() -> void:
-	var xs:= [[-95.0, -71.5], [-56.5, -7.5], [7.5, 56.5], [71.5, 95.0]]
+	var sh:= STREET_HALF
+	var xs:= [[-EDGE, NS_ROADS[0] - sh], [NS_ROADS[0] + sh, NS_ROADS[1] - sh], [NS_ROADS[1] + sh, NS_ROADS[2] - sh], [NS_ROADS[2] + sh, EDGE]]
 	# Rows: [z0, z1, [block type per column]]
 	var rows:= [
-		[79.5, 120.0, ["mid", "mid_camp", "mid_camp", "mid"]],
-		[29.5, 64.5, ["mid", "towers", "park", "mid"]],
-		[-22.0, 14.5, ["mid", "lot", "towers", "towers"]],
+		[EW_ROADS[0] + sh, OUTER, ["mid", "mid_camp", "mid_camp", "mid"]],
+		[EW_ROADS[1] + sh, EW_ROADS[0] - sh, ["mid", "towers", "park", "mid"]],
+		[OVERPASS_Z + OVERPASS_HALF, EW_ROADS[1] - sh, ["mid", "lot", "towers", "towers"]],
 	]
 	_block_list = []
 	for row in rows:
@@ -119,8 +125,8 @@ func _plan() -> void:
 			_block_list.append({"rect": r, "kind": kind})
 	# The skyline wall: east, west and north (beyond the river) edges.
 	for side: float in [-1.0, 1.0]:
-		_block_list.append({"rect": Rect2(95.0 if side > 0 else -120.0, -120.0, 25.0, 240.0), "kind": "wall"})
-	_block_list.append({"rect": Rect2(-95.0, -120.0, 190.0, 25.0), "kind": "wall"})
+		_block_list.append({"rect": Rect2(EDGE if side > 0 else -OUTER, -OUTER, OUTER - EDGE, OUTER * 2.0), "kind": "wall"})
+	_block_list.append({"rect": Rect2(-EDGE, -OUTER, EDGE * 2.0, OUTER - EDGE), "kind": "wall"})
 	# The two blocks between the riverside street and the overpass are thin plazas: open.
 	for b in _block_list:
 		var r: Rect2 = b["rect"]
@@ -129,11 +135,11 @@ func _plan() -> void:
 	# River (except where the bridge crosses).
 	var rz0:= RIVER_Z - RIVER_BED_HALF - 3.5
 	var rz1:= RIVER_Z + RIVER_BED_HALF + 3.5
-	blockers.append(Rect2(-130.0, rz0, 130.0 - BRIDGE_HALF + 0.5, rz1 - rz0))
-	blockers.append(Rect2(BRIDGE_HALF - 0.5, rz0, 130.0, rz1 - rz0))
-	landmarks["methman_camp"] = Vector2(34, OVERPASS_Z + 1.5)
-	landmarks["tailgate"] = Vector2(-30, -6)
-	landmarks["park"] = Vector2(32, 47)
+	blockers.append(Rect2(-150.0, rz0, 150.0 - BRIDGE_HALF + 0.5, rz1 - rz0))
+	blockers.append(Rect2(BRIDGE_HALF - 0.5, rz0, 150.0, rz1 - rz0))
+	landmarks["methman_camp"] = Vector2(41, OVERPASS_Z + 1.5)
+	landmarks["tailgate"] = Vector2(-38, -5)
+	landmarks["park"] = Vector2(38.5, 56)
 	_build_nav()
 
 
@@ -146,13 +152,13 @@ func _build_nav() -> void:
 		for rz: float in EW_ROADS:
 			nav_nodes.append(Vector2(rx, rz))
 		nav_nodes.append(Vector2(rx, OVERPASS_Z))
-		nav_nodes.append(Vector2(rx, 88.0))
+		nav_nodes.append(Vector2(rx, 106.0))
 	for rz: float in EW_ROADS + [OVERPASS_Z]:
-		nav_nodes.append(Vector2(-88.0, rz))
-		nav_nodes.append(Vector2(88.0, rz))
-	nav_nodes.append_array([Vector2(0, -60), Vector2(0, -88), Vector2(-40, -89), Vector2(40, -89),
-		Vector2(32, 47), Vector2(-30, -6), Vector2(34, OVERPASS_Z), Vector2(-32, OVERPASS_Z), Vector2(0, 100),
-		Vector2(-40, -60), Vector2(40, -60)])
+		nav_nodes.append(Vector2(-106.0, rz))
+		nav_nodes.append(Vector2(106.0, rz))
+	nav_nodes.append_array([Vector2(0, -71), Vector2(0, -105), Vector2(-48, -105), Vector2(48, -105),
+		Vector2(38.5, 56), Vector2(-38, -5), Vector2(41, OVERPASS_Z), Vector2(-38, OVERPASS_Z), Vector2(0, 120),
+		Vector2(-48, -71), Vector2(48, -71)])
 	_nav_edges.clear()
 	for i in nav_nodes.size():
 		_nav_edges[i] = []
@@ -161,7 +167,7 @@ func _build_nav() -> void:
 			var a:= nav_nodes[i]
 			var b:= nav_nodes[j]
 			var d:= a.distance_to(b)
-			if d < 75.0 and not segment_blocked(a, b):
+			if d < 90.0 and not segment_blocked(a, b):
 				_nav_edges[i].append([j, d])
 				_nav_edges[j].append([i, d])
 
@@ -266,10 +272,10 @@ func route(a: Vector2, b: Vector2) -> Array[Vector2]:
 ## A random open spot on a street, plaza or in the park (for spawns and wandering).
 func random_open_spot(r: RandomNumberGenerator) -> Vector2:
 	for _i in 60:
-		var p:= Vector2(r.randf_range(-90, 90), r.randf_range(-92, 75))
+		var p:= Vector2(r.randf_range(-108, 108), r.randf_range(-110, 90))
 		if not blocked(p) and absf(p.y - RIVER_Z) > RIVER_BED_HALF + 2.0:
 			return p
-	return Vector2(0, 22)
+	return Vector2(0, 26)
 
 
 # ------------------------------------------------------------------ build
@@ -279,6 +285,11 @@ func _ready() -> void:
 	_colliders = StaticBody3D.new()
 	_colliders.name = "CityColliders"
 	add_child(_colliders)
+	_props = StaticBody3D.new()
+	_props.name = "CityProps"
+	_props.collision_layer = PROPS_LAYER
+	_props.collision_mask = 0
+	add_child(_props)
 	_building_mat = ShaderMaterial.new()
 	_building_mat.shader = _window_shader()
 	_build_streets()
@@ -483,14 +494,15 @@ func _build_streets() -> void:
 	var curb:= _mat(Color(0.55, 0.54, 0.5), 0.9)
 	var paint:= _mat(Color(0.95, 0.8, 0.2), 0.7, 0.25)
 	var white:= _mat(Color(0.9, 0.9, 0.88), 0.7, 0.2)
-	var span_z:= [-95.0, 120.0]
+	var span_z:= [-EDGE, OUTER]
 	for rx: float in NS_ROADS:
 		var len_z: float = span_z[1] - span_z[0]
 		var cz: float = (span_z[0] + span_z[1]) * 0.5
 		if rx != 0.0:
 			# Side streets stop at the riverside road; only the middle one crosses the bridge.
-			len_z = 120.0 - (-57.5)
-			cz = (120.0 + -57.5) * 0.5
+			var south:= EW_ROADS[2] - STREET_HALF
+			len_z = OUTER - south
+			cz = (OUTER + south) * 0.5
 		_flat(Vector2(ROAD_HALF * 2.0, len_z), Vector3(rx, 0.03, cz), asphalt)
 		for s: float in [-1.0, 1.0]:
 			_flat(Vector2(WALK, len_z), Vector3(rx + s * (ROAD_HALF + WALK * 0.5), 0.045, cz), walk)
@@ -502,12 +514,12 @@ func _build_streets() -> void:
 				_flat(Vector2(0.18, 2.4), Vector3(rx, 0.05, z), paint)
 			z += 5.0
 	for rz: float in EW_ROADS:
-		_flat(Vector2(190.0, ROAD_HALF * 2.0), Vector3(0, 0.035, rz), asphalt)
+		_flat(Vector2(EDGE * 2.0, ROAD_HALF * 2.0), Vector3(0, 0.035, rz), asphalt)
 		for s: float in [-1.0, 1.0]:
-			_flat(Vector2(190.0, WALK), Vector3(0, 0.05, rz + s * (ROAD_HALF + WALK * 0.5)), walk)
-			_box(Vector3(190.0, 0.12, 0.18), Vector3(0, 0.06, rz + s * ROAD_HALF), curb)
-		var x:= -93.0
-		while x < 93.0:
+			_flat(Vector2(EDGE * 2.0, WALK), Vector3(0, 0.05, rz + s * (ROAD_HALF + WALK * 0.5)), walk)
+			_box(Vector3(EDGE * 2.0, 0.12, 0.18), Vector3(0, 0.06, rz + s * ROAD_HALF), curb)
+		var x:= -EDGE + 2.0
+		while x < EDGE - 2.0:
 			if not _near_ns(x, STREET_HALF):
 				_flat(Vector2(2.4, 0.18), Vector3(x, 0.055, rz), paint)
 			x += 5.0
@@ -517,7 +529,7 @@ func _build_streets() -> void:
 				for k in 6:
 					_flat(Vector2(0.6, 3.0), Vector3(rx - 3.2 + k * 1.3, 0.06, rz + s * (ROAD_HALF + 1.6)), white)
 	# Under the overpass and the plazas: plain concrete.
-	_flat(Vector2(190.0, OVERPASS_HALF * 2.0 + 2.0), Vector3(0, 0.02, OVERPASS_Z), _mat(Color(0.3, 0.3, 0.31), 0.95))
+	_flat(Vector2(EDGE * 2.0, OVERPASS_HALF * 2.0 + 2.0), Vector3(0, 0.02, OVERPASS_Z), _mat(Color(0.3, 0.3, 0.31), 0.95))
 
 
 func _near_ew(z: float, half: float) -> bool:
@@ -558,25 +570,25 @@ func _build_river() -> void:
 		var z:= RIVER_Z + s * (RIVER_BED_HALF + RIVER_BANK + 0.3)
 		for side: float in [-1.0, 1.0]:
 			var x0:= BRIDGE_HALF + 0.2
-			var x1:= 95.0
+			var x1:= EDGE
 			var cx:= side * (x0 + x1) * 0.5
 			_box(Vector3(x1 - x0, 1.0, 0.25), Vector3(cx, 0.5, z), stone, true)
 			_box(Vector3(x1 - x0, 0.1, 0.1), Vector3(cx, 1.05, z), rail)
 	# Benches on the riverside lawn.
-	for x: float in [-50.0, -26.0, 24.0, 48.0]:
-		_bench(Vector3(x, 0, -58.6), PI)
+	for x: float in [-60.0, -31.0, 29.0, 58.0]:
+		_bench(Vector3(x, 0, -72.6), PI)
 
 
 func _build_overpass() -> void:
 	var conc:= _mat(Color(0.5, 0.49, 0.47), 0.95)
 	var dark:= _mat(Color(0.25, 0.25, 0.26), 0.95)
 	# Deck, barriers, and the dark underside.
-	_box(Vector3(240.0, 1.2, OVERPASS_HALF * 2.0), Vector3(0, OVERPASS_Y + 0.6, OVERPASS_Z), conc, true)
-	_box(Vector3(240.0, 0.6, OVERPASS_HALF * 2.0 - 1.0), Vector3(0, OVERPASS_Y - 0.25, OVERPASS_Z), dark)
+	_box(Vector3(OUTER * 2.0, 1.2, OVERPASS_HALF * 2.0), Vector3(0, OVERPASS_Y + 0.6, OVERPASS_Z), conc, true)
+	_box(Vector3(OUTER * 2.0, 0.6, OVERPASS_HALF * 2.0 - 1.0), Vector3(0, OVERPASS_Y - 0.25, OVERPASS_Z), dark)
 	for s: float in [-1.0, 1.0]:
-		_box(Vector3(240.0, 1.0, 0.4), Vector3(0, OVERPASS_Y + 1.7, OVERPASS_Z + s * (OVERPASS_HALF - 0.2)), conc)
-	var x:= -112.0
-	while x < 112.0:
+		_box(Vector3(OUTER * 2.0, 1.0, 0.4), Vector3(0, OVERPASS_Y + 1.7, OVERPASS_Z + s * (OVERPASS_HALF - 0.2)), conc)
+	var x:= -OUTER + 4.0
+	while x < OUTER - 4.0:
 		if not _near_ns(x, STREET_HALF + 1.0):
 			for s: float in [-1.0, 1.0]:
 				var p:= Vector3(x, OVERPASS_Y * 0.5, OVERPASS_Z + s * 3.2)
@@ -587,10 +599,10 @@ func _build_overpass() -> void:
 				cyl.height = OVERPASS_Y
 				cs.shape = cyl
 				cs.position = p
-				_colliders.add_child(cs)
+				_props.add_child(cs)
 		x += 16.0
 	# Sodium lights hung under the deck.
-	for lx: float in [-48.0, -16.0, 20.0, 34.0, 48.0, -80.0, 80.0]:
+	for lx: float in [-58.0, -19.0, 24.0, 41.0, 58.0, -96.0, 96.0]:
 		var l:= OmniLight3D.new()
 		l.light_color = Color(1.0, 0.62, 0.25)
 		l.light_energy = 2.2
@@ -740,7 +752,7 @@ func _add_trees(xfs: Array[Transform3D]) -> void:
 		cyl.height = 3.0
 		cs.shape = cyl
 		cs.position = xf.origin + Vector3(0, 1.5, 0)
-		_colliders.add_child(cs)
+		_props.add_child(cs)
 
 
 func _bench(p: Vector3, yaw: float) -> void:
@@ -796,23 +808,23 @@ func _car(p: Vector3, yaw: float) -> void:
 	bs.size = Vector3(1.8, 1.4, 4.2)
 	cs.shape = bs
 	cs.transform = n.transform * Transform3D(Basis.IDENTITY, Vector3(0, 0.7, 0))
-	_colliders.add_child(cs)
+	_props.add_child(cs)
 
 
 ## Cars parked along the curbs (both sides of the streets, with gaps).
 func _build_cars() -> void:
 	for rx: float in NS_ROADS:
 		for side: float in [-1.0, 1.0]:
-			var z:= -40.0
-			while z < 66.0:
+			var z:= -48.0
+			while z < 80.0:
 				if not _near_ew(z, STREET_HALF + 3.0) and absf(z - OVERPASS_Z) > OVERPASS_HALF + 2.0 and rng.randf() < 0.35:
 					_car(Vector3(rx + side * (ROAD_HALF - 1.2), 0, z), 0.0 if side > 0 else PI)
 				z += 6.0
 	for rz: float in EW_ROADS:
 		for side: float in [-1.0, 1.0]:
-			var x:= -90.0
-			while x < 90.0:
-				if not _near_ns(x, STREET_HALF + 3.0) and rng.randf() < 0.3 and not (rz == 72.0 and absf(x) < 22.0):
+			var x:= -108.0
+			while x < 108.0:
+				if not _near_ns(x, STREET_HALF + 3.0) and rng.randf() < 0.3 and not (rz == EW_ROADS[0] and absf(x) < 22.0):
 					_car(Vector3(x, 0, rz + side * (ROAD_HALF - 1.2)), PI * 0.5 if side > 0 else -PI * 0.5)
 				x += 6.0
 
@@ -821,8 +833,8 @@ func _build_sidewalk_trees() -> void:
 	var xfs: Array[Transform3D] = []
 	for rx: float in NS_ROADS:
 		for side: float in [-1.0, 1.0]:
-			var z:= -44.0 + 4.0
-			while z < 66.0:
+			var z:= -48.0
+			while z < 80.0:
 				if not _near_ew(z, STREET_HALF + 2.0) and absf(z - OVERPASS_Z) > OVERPASS_HALF + 2.0:
 					var p:= Vector3(rx + side * (ROAD_HALF + 1.4), 0, z)
 					xfs.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.62, 0.75)), p))
@@ -830,9 +842,9 @@ func _build_sidewalk_trees() -> void:
 				z += 14.0
 	for rz: float in EW_ROADS:
 		for side: float in [-1.0, 1.0]:
-			var x:= -88.0
-			while x < 90.0:
-				if not _near_ns(x, STREET_HALF + 2.0) and not (rz == 72.0 and absf(x) < 22.0 and side > 0):
+			var x:= -106.0
+			while x < 108.0:
+				if not _near_ns(x, STREET_HALF + 2.0) and not (rz == EW_ROADS[0] and absf(x) < 22.0 and side > 0):
 					var p:= Vector3(x, 0, rz + side * (ROAD_HALF + 1.4))
 					xfs.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.62, 0.75)), p))
 					_box(Vector3(1.3, 0.18, 1.3), p + Vector3(0, 0.09, 0), _mat(Color(0.25, 0.18, 0.12), 1.0))
@@ -843,15 +855,15 @@ func _build_sidewalk_trees() -> void:
 func _build_lamps() -> void:
 	for rx: float in NS_ROADS:
 		for side: float in [-1.0, 1.0]:
-			var z:= -40.0
-			while z < 70.0:
+			var z:= -48.0
+			while z < 84.0:
 				if not _near_ew(z, STREET_HALF) and absf(z - OVERPASS_Z) > OVERPASS_HALF:
 					_lamp_spots.append(Vector3(rx + side * (ROAD_HALF + 0.4), 0, z))
 				z += 28.0
 	for rz: float in EW_ROADS:
 		for side: float in [-1.0, 1.0]:
-			var x:= -80.0
-			while x < 90.0:
+			var x:= -96.0
+			while x < 108.0:
 				if not _near_ns(x, STREET_HALF):
 					_lamp_spots.append(Vector3(x, 0, rz + side * (ROAD_HALF + 0.4)))
 				x += 32.0
@@ -880,17 +892,25 @@ func _build_lamps() -> void:
 
 ## Food stands, a taco truck and a newspaper kiosk ("THE DAILY CRYPTID"), dumpsters.
 func _build_stands() -> void:
-	_hotdog_cart(Vector3(11.0, 0, 31.5), 0.0)
-	_kiosk(Vector3(-11.5, 0, 31.0), "PRETZELS", Color(0.85, 0.45, 0.1), PI)
-	_newsstand(Vector3(10.0, 0, 13.0), 0.0)
-	_food_truck(Vector3(-6.0, 0, -52.5), PI * 0.5)
-	_hotdog_cart(Vector3(-12.0, 0, -40.5), PI)
-	_kiosk(Vector3(60.0 - 11.0, 0, 13.5), "COFFEE", Color(0.35, 0.22, 0.15), 0.0)
+	_hotdog_cart(Vector3(11.0, 0, 35.5), 0.0)
+	_kiosk(Vector3(-11.5, 0, 35.0), "PRETZELS", Color(0.85, 0.45, 0.1), PI)
+	_newsstand(Vector3(10.0, 0, 16.0), 0.0)
+	_food_truck(Vector3(-6.0, 0, -62.5), PI * 0.5)
+	_hotdog_cart(Vector3(-12.0, 0, -48.5), PI)
+	_kiosk(Vector3(NS_ROADS[2] - 11.0, 0, 16.5), "COFFEE", Color(0.35, 0.22, 0.15), 0.0)
 	var green:= _mat(Color(0.12, 0.3, 0.18), 0.6)
-	for p: Vector3 in [Vector3(-40, 0, OVERPASS_Z + 5.5), Vector3(22, 0, OVERPASS_Z - 5.5), Vector3(-70, 0, 15.5), Vector3(58, 0, 65.5), Vector3(-15, 0, 65.5)]:
-		var d:= _box(Vector3(2.0, 1.3, 1.2), p + Vector3(0, 0.65, 0), green, true)
+	for p: Vector3 in [Vector3(-48, 0, OVERPASS_Z + 5.5), Vector3(26, 0, OVERPASS_Z - 5.5), Vector3(-84, 0, 19.5),
+			Vector3(70, 0, 79.5), Vector3(-18, 0, 79.5), Vector3(90, 0, -48.5)]:
+		if blocked(Vector2(p.x, p.z)):
+			continue
+		_box(Vector3(2.0, 1.3, 1.2), p + Vector3(0, 0.65, 0), green)
 		_box(Vector3(2.05, 0.1, 1.25), p + Vector3(0, 1.32, 0), _mat(Color(0.08, 0.2, 0.12), 0.6))
-		d.rotation.y = 0.0
+		var cs:= CollisionShape3D.new()
+		var bs:= BoxShape3D.new()
+		bs.size = Vector3(2.0, 1.3, 1.2)
+		cs.shape = bs
+		cs.position = p + Vector3(0, 0.65, 0)
+		_props.add_child(cs)
 		hides.append({"pos": Vector2(p.x, p.z + (1.3 if p.z < 0 else -1.3)), "radius": 1.1})
 
 
@@ -991,7 +1011,7 @@ func _collide_box(n: Node3D, size: Vector3, local: Vector3) -> void:
 	bs.size = size
 	cs.shape = bs
 	cs.transform = n.transform * Transform3D(Basis.IDENTITY, local)
-	_colliders.add_child(cs)
+	_props.add_child(cs)
 
 
 func _build_camp_lot() -> void:
@@ -1001,9 +1021,9 @@ func _build_camp_lot() -> void:
 	fence.metallic = 0.7
 	fence.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	fence.albedo_color.a = 0.55
-	_box(Vector3(CAMP_LOT.size.x, 2.2, 0.05), Vector3(CAMP_LOT.get_center().x, 1.1, 116.0), fence)
+	_box(Vector3(CAMP_LOT.size.x, 2.2, 0.05), Vector3(CAMP_LOT.get_center().x, 1.1, 134.0), fence)
 	for x in range(int(CAMP_LOT.position.x), int(CAMP_LOT.end.x) + 1, 4):
-		_cyl(0.05, 2.3, Vector3(float(x), 1.15, 116.0), _mat(Color(0.5, 0.5, 0.52), 0.5))
+		_cyl(0.05, 2.3, Vector3(float(x), 1.15, 134.0), _mat(Color(0.5, 0.5, 0.52), 0.5))
 
 
 # ------------------------------------------------------------------ pedestrians
@@ -1013,7 +1033,7 @@ func spawn_pedestrians(parent: Node, player: Node3D) -> Array:
 	var out: Array = []
 	var r:= RandomNumberGenerator.new()
 	r.seed = int(Time.get_ticks_usec())
-	for i in 14:
+	for i in 18:
 		var ped:= Pedestrian.new()
 		ped.city = self
 		ped.model_path = "res://models/ped_suit.glb" if i % 2 == 0 else "res://models/ped_hoodie.glb"
@@ -1030,9 +1050,9 @@ func sidewalk_lines() -> Array:
 	for rx: float in NS_ROADS:
 		for side: float in [-1.0, 1.0]:
 			var x: float = rx + side * (ROAD_HALF + 1.0)
-			lines.append([Vector2(x, -45.0), Vector2(x, 78.0)])
+			lines.append([Vector2(x, -54.0), Vector2(x, 94.0)])
 	for rz: float in EW_ROADS:
 		for side: float in [-1.0, 1.0]:
 			var z: float = rz + side * (ROAD_HALF + 1.0)
-			lines.append([Vector2(-88.0, z), Vector2(88.0, z)])
+			lines.append([Vector2(-106.0, z), Vector2(106.0, z)])
 	return lines

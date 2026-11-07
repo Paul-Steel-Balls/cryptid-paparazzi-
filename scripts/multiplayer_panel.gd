@@ -32,6 +32,7 @@ func _ready() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(title)
 	v.add_child(UIStyle.label("Up to 4 photographers. One PC hosts the night; the others join it.", 17, Color(0.85, 0.85, 0.9)))
+	v.add_child(UIStyle.label("Voice: turn on Microphone in the pause menu, then hold T to talk (nearby players hear you, and so do cryptids).", 15, Color(0.6, 0.95, 0.65)))
 	_name = _row(v, "Your name", Net.my_name)
 	_name.max_length = 16
 	_name.text_submitted.connect(func(_t: String): Net.set_my_name(_name.text))

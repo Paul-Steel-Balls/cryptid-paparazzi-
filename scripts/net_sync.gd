@@ -146,6 +146,41 @@ func _drop_remote(id: int) -> void:
 		rp.queue_free()
 
 
+# ------------------------------------------------------------------ proximity voice
+
+## This PC's mic produced a chunk while talking: send it (host relays to everyone else).
+func send_voice(data: PackedByteArray) -> void:
+	if not active():
+		return
+	if Net.is_host():
+		for id in _ready_peers:
+			_voice_in.rpc_id(id, 1, data)
+	else:
+		_voice_up.rpc_id(1, data)
+
+
+@rpc("any_peer", "unreliable_ordered")
+func _voice_up(data: PackedByteArray) -> void:
+	if not Net.is_host() or data.size() > 4096:
+		return
+	var id:= multiplayer.get_remote_sender_id()
+	var rp = remotes.get(id)
+	if rp != null and is_instance_valid(rp):
+		rp.play_voice(data)
+	for other in _ready_peers:
+		if other != id:
+			_voice_in.rpc_id(other, id, data)
+
+
+@rpc("authority", "unreliable_ordered")
+func _voice_in(id: int, data: PackedByteArray) -> void:
+	if id == Net.my_id():
+		return
+	var rp = remotes.get(id)
+	if rp != null and is_instance_valid(rp):
+		rp.play_voice(data)
+
+
 # ------------------------------------------------------------------ cryptids (host -> everyone)
 
 func _send_cryptids() -> void:
@@ -237,6 +272,8 @@ func _request_world() -> void:
 		"roster": roster, "items": items,
 		"pot": [pot.global_position, pot.taken] if pot != null and is_instance_valid(pot) else [],
 		"santa": santa != null and is_instance_valid(santa) and not santa.is_leaving(),
+		"night_time": main.get("_night_time"),
+		"day": main.get("is_day"),
 	}
 	_world.rpc_id(id, world)
 	_ready_peers[id] = true
@@ -370,6 +407,156 @@ func _trap_sprung(id: int) -> void:
 		(n as Trap).spring_on(null)
 
 
+# ------------------------------------------------------------------ tripods and UFOs (owner -> everyone)
+## Each player's tripods and UFO run on their own PC; everyone else sees copies.
+
+var _ghost_tripods: Dictionary = {}   # "owner:id" -> Tripod (look only)
+var _ghost_ufos: Dictionary = {}      # owner -> UFO (look only, but you can photograph it)
+var _next_tripod:= 1
+
+
+## Relay helper: send to everyone but the original sender (host), or up to the host (client).
+func _fanout(method: String, args: Array, from_id: int) -> void:
+	if Net.is_host():
+		for p in _ready_peers:
+			if p != from_id:
+				callv("rpc_id", [p, method] + args)
+
+
+func share_tripod(t: Tripod) -> int:
+	var id:= _next_tripod
+	_next_tripod += 1
+	if not active():
+		return id
+	if Net.is_host():
+		_fanout("_tripod_in", [1, id, t.global_transform], 1)
+	else:
+		_tripod_up.rpc_id(1, id, t.global_transform)
+	t.fired.connect(func(_r: Dictionary, _tg: Node3D):
+		if not active():
+			return
+		if Net.is_host():
+			_fanout("_tripod_shot", [1, id], 1)
+		else:
+			_tripod_fire_up.rpc_id(1, id))
+	return id
+
+
+@rpc("any_peer", "reliable")
+func _tripod_up(id: int, xf: Transform3D) -> void:
+	var from:= multiplayer.get_remote_sender_id()
+	_tripod_in(from, id, xf)
+	_fanout("_tripod_in", [from, id, xf], from)
+
+
+@rpc("any_peer", "reliable")
+func _tripod_fire_up(id: int) -> void:
+	var from:= multiplayer.get_remote_sender_id()
+	_tripod_shot(from, id)
+	_fanout("_tripod_shot", [from, id], from)
+
+
+@rpc("authority", "reliable")
+func _tripod_in(owner: int, id: int, xf: Transform3D) -> void:
+	if owner == Net.my_id():
+		return
+	var t:= Tripod.new()   # no player: it never fires by itself
+	main.add_child(t)
+	t.global_transform = xf
+	_ghost_tripods["%d:%d" % [owner, id]] = t
+
+
+@rpc("authority", "reliable")
+func _tripod_shot(owner: int, id: int) -> void:
+	var t = _ghost_tripods.get("%d:%d" % [owner, id])
+	if t != null and is_instance_valid(t):
+		t.fire(t)
+
+
+## The owner's UFO: where it is, whether it's beaming, whether it's leaving (gone when null).
+func share_ufo(u: UFO) -> void:
+	if not active():
+		return
+	var st:= [u.global_position, u.is_beaming(), u.phase == UFO.Phase.LEAVE, u.lift]
+	if Net.is_host():
+		_fanout("_ufo_in", [1, st], 1)
+	else:
+		_ufo_up.rpc_id(1, st)
+
+
+func ufo_gone() -> void:
+	if not active():
+		return
+	if Net.is_host():
+		_fanout("_ufo_gone_in", [1], 1)
+	else:
+		_ufo_gone_up.rpc_id(1)
+
+
+@rpc("any_peer", "unreliable_ordered")
+func _ufo_up(st: Array) -> void:
+	var from:= multiplayer.get_remote_sender_id()
+	_ufo_in(from, st)
+	_fanout("_ufo_in", [from, st], from)
+
+
+@rpc("any_peer", "reliable")
+func _ufo_gone_up() -> void:
+	var from:= multiplayer.get_remote_sender_id()
+	_ufo_gone_in(from)
+	_fanout("_ufo_gone_in", [from], from)
+
+
+@rpc("authority", "unreliable_ordered")
+func _ufo_in(owner: int, st: Array) -> void:
+	if owner == Net.my_id():
+		return
+	var u: UFO = _ghost_ufos.get(owner)
+	if u == null or not is_instance_valid(u):
+		u = UFO.new()
+		u.ghost = true
+		u.ghost_owner = owner
+		u.player = _player()
+		main.add_child(u)
+		u.global_position = st[0]
+		_ghost_ufos[owner] = u
+		_player().extra_subjects.append(u)
+	u.ghost_apply(st[0], bool(st[1]), bool(st[2]), float(st[3]))
+
+
+@rpc("authority", "reliable")
+func _ufo_gone_in(owner: int) -> void:
+	var u = _ghost_ufos.get(owner)
+	_ghost_ufos.erase(owner)
+	if u != null and is_instance_valid(u):
+		u.queue_free()
+
+
+## Someone photographed another player's UFO: tell its owner (their UFO bolts).
+func ufo_snapped(owner: int) -> void:
+	if owner == Net.my_id():
+		return
+	if Net.is_host():
+		_ufo_spook.rpc_id(owner)
+	else:
+		_ufo_snap_up.rpc_id(1, owner)
+
+
+@rpc("any_peer", "reliable")
+func _ufo_snap_up(owner: int) -> void:
+	if not Net.is_host():
+		return
+	if owner == 1:
+		main.spook_my_ufo()
+	elif _ready_peers.has(owner):
+		_ufo_spook.rpc_id(owner)
+
+
+@rpc("authority", "reliable")
+func _ufo_spook() -> void:
+	main.spook_my_ufo()
+
+
 # ------------------------------------------------------------------ pot of gold, Santa, the night
 
 func request_gold() -> void:
@@ -420,6 +607,17 @@ func _santa_snap_req() -> void:
 @rpc("authority", "reliable")
 func _santa_leave() -> void:
 	main.santa_leave()
+
+
+## Host's night ran out: morning for everyone.
+func dawn() -> void:
+	for p in _ready_peers:
+		_dawn.rpc_id(p)
+
+
+@rpc("authority", "reliable")
+func _dawn() -> void:
+	main.begin_dawn()
 
 
 ## Host slept or drove somewhere: everyone goes with them.
