@@ -8,7 +8,7 @@ const SFX:= [
 	"cash", "cash_tick", "coins", "corn_alert", "corn_grunt", "crackin_alert",
 	"crackin_grunt", "develop", "door", "dry_click", "engine", "escaped",
 	"fhairy_alert", "fhairy_grunt", "flash_charge", "grey_alert", "grey_grunt", "hoof_1",
-	"hoof_2", "hoof_3", "hoof_4", "jersey_alert", "jersey_grunt", "land",
+	"hoof_2", "hoof_3", "hoof_4", "horn", "jersey_alert", "jersey_grunt", "land",
 	"leper_alert", "leper_grunt", "loon", "lose", "methman_alert", "methman_grunt",
 	"midstep_1", "midstep_2", "midstep_3", "midstep_4", "ouch", "owl",
 	"pogo_alert", "pogo_grunt", "rake_alert", "rake_grunt", "reload", "run_1",

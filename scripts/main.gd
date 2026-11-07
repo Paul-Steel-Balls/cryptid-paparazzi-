@@ -395,7 +395,7 @@ func _spawn_fireflies() -> void:
 
 func _spawn_spot(min_camp: float = 45.0) -> Vector2:
 	for _i in 200:
-		var p:= Vector2(_rng.randf_range(-85, 85), _rng.randf_range(-85, 70))
+		var p:= Vector2(_rng.randf_range(-Terrain.SPAN, Terrain.SPAN), _rng.randf_range(-Terrain.SPAN, Terrain.SPAN * 0.82))
 		if p.distance_to(Terrain.CAMP) < min_camp:
 			continue
 		if _terrain.water_level > -100.0 and _terrain.height_at(p.x, p.y) < _terrain.water_level + 0.3:

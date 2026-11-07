@@ -114,6 +114,7 @@ var _skin:= Color(0.93, 0.74, 0.58)
 
 
 func _ready() -> void:
+	add_to_group("traffic_stop")   # City cars brake for you
 	collision_mask |= CityBlocks.PROPS_LAYER   # you bump into street furniture; cryptids don't
 	_camera = $Camera3D
 	_shape_node = $CollisionShape3D

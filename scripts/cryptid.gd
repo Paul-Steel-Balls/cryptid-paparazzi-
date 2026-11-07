@@ -132,6 +132,7 @@ func configure(id: String) -> void:
 
 
 func _ready() -> void:
+	add_to_group("traffic_stop")   # City cars brake for you
 	# They follow the ground by height lookup; colliding with the terrain mesh as well
 	# only snags them on slopes (that's what pinned them at the lake shore).
 	if terrain != null:

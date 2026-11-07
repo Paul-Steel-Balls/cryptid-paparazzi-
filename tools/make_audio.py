@@ -970,6 +970,21 @@ def sfx_ufo_zip():  # pew: shoots off into the sky
     f = 300 + 2600 * (t / 1.2) ** 2
     return reverb((osc(f) + 0.4 * osc(f * 1.5, "tri")) * np.exp(-t / 0.5) * 0.6, 0.4, 1.5)
 
+def sfx_horn():  # two-tone car horn, a short impatient double toot
+    out = np.zeros(int(0.62 * SR))
+    for start, dur in [(0.0, 0.18), (0.26, 0.34)]:
+        n = int(dur * SR)
+        tt = np.arange(n) / SR
+        x = np.zeros(n)
+        for f in (415.0, 523.0):  # the classic minor-third horn pair
+            ph = 2 * np.pi * f * tt
+            x += signal.square(ph, 0.5) * 0.5 + np.sin(ph) * 0.3
+        x = bp(x, 300, 3200)
+        x *= env_adsr(n, 0.008, 0.04, 0.85, 0.04)
+        mix_at(out, x, int(start * SR))
+    return fade(out)
+
+
 def sfx_tractor():  # the beam locks on
     t = t_(1.6)
     f = 140 + 60 * np.sin(2 * np.pi * 6 * t)
@@ -1041,7 +1056,7 @@ SFX = {
     "fhairy_alert": v_fhairy_alert, "fhairy_grunt": v_fhairy_grunt, "leper_alert": v_leper_alert, "leper_grunt": v_leper_grunt,
     "rake_alert": v_rake_alert, "rake_grunt": v_rake_grunt, "bent_alert": v_bent_alert, "bent_grunt": v_bent_grunt,
     "santa_ho": v_santa_ho, "sleigh_bells": sfx_sleigh_bells, "ufo_hum": sfx_ufo_hum, "ufo_zip": sfx_ufo_zip,
-    "tractor": sfx_tractor, "coins": sfx_coins, "rooster": sfx_rooster,
+    "tractor": sfx_tractor, "coins": sfx_coins, "rooster": sfx_rooster, "horn": sfx_horn,
 }
 for i in range(6):
     SFX[f"step_{i+1}"] = (lambda i=i: step_forest(1000 + i * 7))

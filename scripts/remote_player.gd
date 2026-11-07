@@ -28,6 +28,7 @@ var voice_samples:= 0      # received so far (tests)
 
 
 func _ready() -> void:
+	add_to_group("traffic_stop")   # City cars brake for you
 	var cs:= CollisionShape3D.new()
 	var cap:= CapsuleShape3D.new()
 	cap.radius = 0.35

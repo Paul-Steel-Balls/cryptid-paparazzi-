@@ -870,8 +870,8 @@ def toe_rogan():
     ch = Character("toe_rogan", s, voxel=0.013)
     jeans = speckle((0.18, 0.24, 0.4), 0.08, 40)
     toe_skin = (0.95, 0.74, 0.62)
-    # Bold red V-neck tee with a white "big toe" print and white hems so it reads at night.
-    tee_red = np.array([0.72, 0.08, 0.08])
+    # Black V-neck tee with a white "big toe" print.
+    tee_red = np.array([0.075, 0.075, 0.085])
     def tee(p):
         out = np.tile(tee_red, (len(p), 1))
         logo = ((p[:, 0] / 0.065) ** 2 + ((p[:, 1] - 0.86) / 0.075) ** 2 < 1.0) & (p[:, 2] > 0.1)
@@ -882,8 +882,8 @@ def toe_rogan():
         vy = 1.0 + 1.25 * np.abs(p[:, 0])
         front = p[:, 2] > 0.02
         out[front & (p[:, 1] > vy)] = toe_skin
-        out[front & (p[:, 1] > vy - 0.018) & (p[:, 1] <= vy)] = tee_red * 0.7
-        out[(p[:, 1] < 0.71)] = (0.97, 0.95, 0.9)     # hem
+        out[front & (p[:, 1] > vy - 0.018) & (p[:, 1] <= vy)] = (0.22, 0.22, 0.24)   # ribbed collar
+        out[(p[:, 1] < 0.715) & (p[:, 1] > 0.69)] = (0.2, 0.2, 0.22)              # hem stitching
         return out
     # THE HEAD IS THE TOE (Thumb-Thumb style): one tall, straight, smooth column of skin rising
     # out of the V-neck, domed on top, a big oval nail on the upper front, two knuckle creases
@@ -897,9 +897,9 @@ def toe_rogan():
             crease = (np.abs(y - cy + 0.9 * x * x) < 0.006) & (z > 0.06) & (np.abs(x) < 0.125)
             out[crease] = (0.8, 0.58, 0.5)
         # cuticle: a soft darker ring just outside the nail
-        nx, ny = x / 0.112, (y - 1.505) / 0.132
+        nx, ny = x / 0.116, (y - 1.505) / 0.138
         rim = (nx * nx + ny * ny < 1.0) & (z > 0.05)
-        out[rim] = out[rim] * 0.9 + np.array([0.85, 0.5, 0.45]) * 0.1
+        out[rim] = out[rim] * 0.45 + np.array([0.7, 0.4, 0.36]) * 0.55     # the groove round the nail
         return np.clip(out * (1 + 0.025 * vnoise(p, 30, 2.0))[:, None], 0, 1)
     ch.add(capsule((0, 1.04, -0.005), (0, 1.22, -0.005), 0.16, "neck", toe_col, k=0.01))
     ch.add(capsule((0, 1.2, -0.005), (0, 1.465, -0.005), 0.155, "head", toe_col, rb=0.16, k=0.05))
@@ -907,15 +907,19 @@ def toe_rogan():
     for cy, sx in ((1.305, 0.11), (1.343, 0.115)):
         ch.add(ellipsoid((0, cy, 0.118), (sx, 0.016, 0.042), "head", toe_col, k=0.016))
     def nail_col(p):
-        y = p[:, 1]
-        out = np.tile(np.array([0.93, 0.7, 0.68]), (len(p), 1))
-        out[y < 1.43] = (0.95, 0.8, 0.77)         # paler moon at the base
-        out[y > 1.605] = (0.96, 0.86, 0.8)        # free edge over the top
-        ridge = np.abs(np.sin(p[:, 0] * 80)) < 0.07
-        out[ridge] = out[ridge] * 0.97
-        return out
+        x, y = p[:, 0], p[:, 1]
+        out = np.tile(np.array([0.9, 0.55, 0.6]), (len(p), 1))            # pink nail bed showing through
+        moon = ((x / 0.06) ** 2 + ((y - 1.405) / 0.05) ** 2) < 1.0
+        out[moon] = (0.99, 0.88, 0.86)                                      # lunula
+        out[y > 1.598] = (0.99, 0.97, 0.92)                                 # white free edge
+        out[(y > 1.588) & (y <= 1.598)] = (0.86, 0.6, 0.6)                  # the line where it lifts off
+        ridge = np.abs(np.sin(x * 95)) < 0.1
+        out[ridge] = out[ridge] * 0.95                                      # lengthwise ridges
+        shine = (np.abs(x + 0.035) < 0.012) & (y > 1.44) & (y < 1.58)
+        out[shine] = out[shine] * 0.55 + 0.4                                # glossy highlight
+        return np.clip(out, 0, 1)
     # the nail: a broad oval plate following the front curve and tipping back over the dome
-    ch.add(ellipsoid((0, 1.505, 0.098), (0.1, 0.128, 0.05), "head", nail_col, rot=(-0.32, 0, 0), k=0.016))
+    ch.add(ellipsoid((0, 1.505, 0.104), (0.1, 0.13, 0.052), "head", nail_col, rot=(-0.32, 0, 0), k=0.006))
     # huge traps, chest, lats in the tee
     ch.add(mirror(lambda x: capsule((x * 0.06, 1.1, -0.02), (x * 0.25, 1.06, -0.01), 0.085, "chest", tee, k=0.03)))
     ch.add(ellipsoid((0, 0.94, -0.01), (0.31, 0.17, 0.17), "chest", tee, k=0.06))

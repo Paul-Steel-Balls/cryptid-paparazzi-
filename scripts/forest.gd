@@ -58,7 +58,7 @@ func _pick_landmarks() -> void:
 				homes.append(h)
 	for h in homes:
 		for _i in 400:
-			var p:= Vector2(rng.randf_range(-80, 80), rng.randf_range(-80, 50))
+			var p:= Vector2(rng.randf_range(-Terrain.SPAN * 0.94, Terrain.SPAN * 0.94), rng.randf_range(-Terrain.SPAN * 0.94, Terrain.SPAN * 0.6))
 			if p.distance_to(Terrain.CAMP) < 55.0 or terrain.normal_at(p.x, p.y).y < 0.93 or not _dry(p, 1.5):
 				continue
 			if _near_landmark(p, 60.0):

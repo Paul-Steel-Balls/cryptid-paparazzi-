@@ -102,7 +102,7 @@ func _ready() -> void:
 	_locked_pic = TextureRect.new()
 	_locked_pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_locked_pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_locked_pic.material = UIStyle.silhouette(Color(0, 0, 0, 0.95))
+	# Not on film yet: a sketch-artist WANTED poster (ui/wanted, made by tools/make_wanted.py).
 	_locked_pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	frame.add_child(_locked_pic)
 	_anim_btn = UIStyle.dark_button("NEXT ANIMATION", Color(0.6, 0.95, 1.0), 18)
@@ -159,7 +159,7 @@ func open() -> void:
 		var ok:= GameState.has_file(e[0])
 		if ok:
 			unlocked += 1
-		_list.add_child(_entry_button(e[0], Species.display_name(e[0]).to_upper() if ok else "LOCKED FILE", ok))
+		_list.add_child(_entry_button(e[0], Species.display_name(e[0]).to_upper() if ok else "WANTED: " + Species.display_name(e[0]).to_upper(), ok))
 	for e in ALWAYS:
 		_list.add_child(_entry_button(e[0], e[1], true))
 	(find_child("Count", true, false) as Label).text = "%d of %d cryptid files unlocked" % [unlocked, ENTRIES.size()]
@@ -183,14 +183,11 @@ func _entry_button(id: String, text: String, unlocked: bool) -> Button:
 	var b:= UIStyle.dark_button("  " + text, UIStyle.GOLD if unlocked else Color(0.5, 0.5, 0.55), 18)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.custom_minimum_size = Vector2(0, 56)
-	var path:= "res://ui/portraits/%s.png" % id
+	var path:= ("res://ui/portraits/%s.png" if unlocked else "res://ui/wanted/%s.png") % id
 	if ResourceLoader.exists(path):
 		b.icon = load(path)
 		b.expand_icon = true
 		b.add_theme_constant_override("icon_max_width", 40)
-		if not unlocked:
-			b.add_theme_color_override("icon_normal_color", Color(0, 0, 0))
-			b.add_theme_color_override("icon_hover_color", Color(0, 0, 0))
 	b.pressed.connect(_select.bind(id))
 	return b
 
@@ -214,11 +211,12 @@ func _select(id: String) -> void:
 			title = e[1]
 	var unlocked:= not is_cryptid or GameState.has_file(id)
 	if not unlocked:
-		_title.text = "FILE LOCKED"
-		_blurb.text = "Something's out there. Develop a GREAT SHOT (or better) of this cryptid to open its file."
+		_title.text = "WANTED: " + title
+		_blurb.text = "Witnesses gave the sketch artist this much. Develop a GREAT SHOT (or better) of it to open the real file."
 		var best:= int(GameState.file_scores.get(id, 0))
 		_stats.text = "Best photo so far: %s" % (str(best) if best > 0 else "none")
-		_locked_pic.texture = load("res://ui/portraits/%s.png" % id) if ResourceLoader.exists("res://ui/portraits/%s.png" % id) else null
+		var wp:= "res://ui/wanted/%s.png" % id
+		_locked_pic.texture = load(wp) if ResourceLoader.exists(wp) else null
 		_locked_pic.visible = true
 		_anim_btn.visible = false
 		return
@@ -236,7 +234,8 @@ func _select(id: String) -> void:
 			int(GameState.album.get(id, 0)), "   ".join(tiers), str(info.get("behaviour", "?"))]
 	else:
 		_stats.text = ""
-	_model = CharacterModel.load_model("res://models/%s.glb" % id, 0.012)
+	var mpath:= str(Species.info(id).get("model", "res://models/%s.glb" % id)) if is_cryptid else "res://models/%s.glb" % id
+	_model = CharacterModel.load_model(mpath, 0.012)
 	_model.process_mode = Node.PROCESS_MODE_ALWAYS
 	_pivot.add_child(_model)
 	_anims = []

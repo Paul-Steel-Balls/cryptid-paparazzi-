@@ -119,6 +119,8 @@ const MAPS:= {
 	},
 }
 const MAP_ORDER:= ["woods", "lake", "city"]
+## How many separate groups of each roaming common turn up per night.
+const COMMON_HERDS:= 2
 ## Santa turns up on top of the RV about once a year of nights, on any map.
 const SANTA_CHANCE:= 1.0 / 365.0
 
@@ -207,7 +209,11 @@ static func roll_night(map_id: String, rng: RandomNumberGenerator) -> Array:
 		for id in m[t]:
 			if rng.randf() < float(SPAWN_CHANCE[t]):
 				var g: Array = info(id).get("group", [1, 1])
-				out.append({"id": id, "count": rng.randi_range(int(g[0]), int(g[1]))})
+				# v0.16: the maps are 3x the ground they started with, so commons
+				# that roam (no fixed home) turn up in more than one spot.
+				var herds:= COMMON_HERDS if t == "common" and not info(id).has("home") else 1
+				for _h in herds:
+					out.append({"id": id, "count": rng.randi_range(int(g[0]), int(g[1]))})
 	return out
 
 

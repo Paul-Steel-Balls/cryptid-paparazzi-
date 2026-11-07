@@ -23,16 +23,24 @@ func _ready() -> void:
 	add_child(dim)
 	var box:= PanelContainer.new()
 	box.add_theme_stylebox_override("panel", UIStyle.box(Color(0.08, 0.07, 0.12, 0.97), Color(0.95, 0.75, 0.3), 3, 10, 26))
-	UIStyle.center(box, 640, 560)
+	UIStyle.center(box, 700, 640)
 	dim.add_child(box)
+	# Scrolls rather than hanging off the bottom of a short window.
+	var scroll:= ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	box.add_child(scroll)
 	var v:= VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
-	box.add_child(v)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(v)
 	var title:= UIStyle.label("MULTIPLAYER", 40, Color(0.95, 0.75, 0.3), UIStyle.western())
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(title)
-	v.add_child(UIStyle.label("Up to 4 photographers. One PC hosts the night; the others join it.", 17, Color(0.85, 0.85, 0.9)))
-	v.add_child(UIStyle.label("Voice: turn on Microphone in the pause menu, then hold T to talk (nearby players hear you, and so do cryptids).", 15, Color(0.6, 0.95, 0.65)))
+	for pair in [["Up to 4 photographers. One PC hosts the night; the others join it.", 17, Color(0.85, 0.85, 0.9)],
+			["Voice: turn on Microphone in Settings, then hold T to talk (nearby players hear you, and so do cryptids).", 15, Color(0.6, 0.95, 0.65)]]:
+		var l:= UIStyle.label(pair[0], pair[1], pair[2])
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(l)
 	_name = _row(v, "Your name", Net.my_name)
 	_name.max_length = 16
 	_name.text_submitted.connect(func(_t: String): Net.set_my_name(_name.text))

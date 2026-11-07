@@ -56,6 +56,7 @@ func _ready() -> void:
 	_test_v013()
 	await _test_v014()
 	await _test_v015()
+	await _test_v016()
 	print("RESULT: %d/%d checks passed" % [_passed, _passed + _failed])
 	if _failed > 0:
 		get_tree().quit(1)
@@ -1516,8 +1517,8 @@ func _test_v011() -> void:
 	pot.free()
 	# City: walking round a block of buildings instead of through it.
 	var cb:= CityBlocks.new()
-	var a:= Vector2(-38, CityBlocks.EW_ROADS[1])
-	var b:= Vector2(-38, CityBlocks.EW_ROADS[0])
+	var a:= Vector2(-85, CityBlocks.EW_ROADS[2])
+	var b:= Vector2(-85, CityBlocks.EW_ROADS[1])
 	var path:= cb.route(a, b)
 	var ok:= cb.segment_blocked(a, b) and path.size() > 1
 	var prev:= a
@@ -1629,7 +1630,7 @@ func _test_v013() -> void:
 
 func _test_v014() -> void:
 	GameState.reset()
-	_check("v014: maps are 20% bigger", is_equal_approx(Terrain.HALF, 144.0) and is_equal_approx(Terrain.RIM_START, 114.0))
+	_check("v014: maps are 20% bigger (v016: and 50% on top)", Terrain.HALF >= 144.0 and Terrain.RIM_START >= 114.0)
 	_check("v014: the UFO comes after 10 tourist photos", (load("res://scripts/main.gd") as GDScript).get_script_constant_map()["UFO_AFTER_FLASHES"] == 10)
 	# Controls: rebind and swap, then reset.
 	GameState.rebind("jump", KEY_E)
@@ -1722,4 +1723,116 @@ func _test_v015() -> void:
 	var hud = main_node.get("_hud")
 	_check("v015: no countdown text on screen", (hud.get("_timer_label") as Label).text == "")
 	main_node.free()
+	GameState.reset()
+
+
+func _test_v016() -> void:
+	GameState.reset()
+	# Maps: 50% bigger again (1.8x the original across).
+	_check("v016: maps are 1.8x the original size", is_equal_approx(Terrain.HALF, 216.0) and is_equal_approx(Terrain.RIM_START, 171.0) and is_equal_approx(Terrain.SCALE, 1.8))
+	var rng:= RandomNumberGenerator.new()
+	rng.seed = 5
+	var herds:= 0
+	for e in Species.roll_night("woods", rng):
+		if e["id"] == "cornicorn":
+			herds += 1
+	_check("v016: roaming commons turn up in two herds on the bigger maps", herds == Species.COMMON_HERDS)
+	# Wanted posters for everything not yet on file; the multiplayer panel scrolls.
+	var missing:= []
+	for e in CryptidFiles.ENTRIES:
+		if not ResourceLoader.exists("res://ui/wanted/%s.png" % e[0]):
+			missing.append(e[0])
+	_check("v016: every cryptid has a sketch-artist WANTED poster", missing.is_empty())
+	var files:= CryptidFiles.new()
+	add_child(files)
+	await get_tree().process_frame
+	files.call("_select", "methman")
+	var pic: TextureRect = files.get("_locked_pic")
+	_check("v016: an undiscovered cryptid shows its WANTED poster", pic.visible and pic.texture != null and (files.get("_title") as Label).text.begins_with("WANTED"))
+	files.free()
+	var mp:= MultiplayerPanel.new()
+	add_child(mp)
+	await get_tree().process_frame
+	_check("v016: the multiplayer panel scrolls instead of running off the window", mp.find_children("*", "ScrollContainer", true, false).size() > 0)
+	mp.free()
+	# Traffic lights: never green both ways; each way gets a turn.
+	var both:= false
+	var saw:= {"ns": false, "ew": false}
+	for i in 280:
+		var t:= i * 0.1
+		var ns:= Traffic.light(t, "ns")
+		var ew:= Traffic.light(t, "ew")
+		if ns != "r" and ew != "r":
+			both = true
+		if ns == "g":
+			saw["ns"] = true
+		if ew == "g":
+			saw["ew"] = true
+	_check("v016: traffic lights never let both streets go at once", not both and saw["ns"] and saw["ew"])
+	var ring:= Traffic.ring_path(-50, 50, 50, -50, 1)
+	var d:= (ring[1] - ring[0]).normalized()
+	var side:= (ring[0] - Vector2(-50, 50)).dot(Traffic.right_of(d))
+	_check("v016: cars keep to the right-hand lane", side > 1.0)
+	# The city itself: named buildings, a walkable footbridge, cars that stop for you.
+	var city:= CityBlocks.new()
+	add_child(city)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var names:= []
+	for l in city.find_children("*", "Label3D", true, false):
+		names.append((l as Label3D).text)
+	_check("v016: the City has a police station, hospital, garage and City Hall", "POLICE" in names and "HOSPITAL" in names and "GARAGE" in names and "CITY HALL" in names)
+	var q:= PhysicsRayQueryParameters3D.create(Vector3(CityBlocks.FOOTBRIDGE_X, 20, CityBlocks.EW_ROADS[2]), Vector3(CityBlocks.FOOTBRIDGE_X, -1, CityBlocks.EW_ROADS[2]))
+	var hit:= city.get_world_3d().direct_space_state.intersect_ray(q)
+	_check("v016: the footbridge deck is solid to walk on", not hit.is_empty() and absf(float(hit["position"].y) - CityBlocks.FOOTBRIDGE_Y) < 0.5)
+	var tr: Traffic = city.traffic
+	_check("v016: there's moving traffic", tr.cars.size() >= 10)
+	var car: Dictionary = tr.cars[0]
+	var path: PackedVector2Array = car["path"]
+	var seg: int = car["seg"]
+	var dir:= (path[(seg + 1) % path.size()] - path[seg]).normalized()
+	var start: Vector2 = tr.call("_pos_of", car)
+	var person:= start + dir * 9.0
+	car["speed"] = Traffic.SPEED
+	var honked:= false
+	for i in 120:
+		tr.call("_drive", car, 0.05, [[person, true]])
+		if float(car["honk"]) < 0.0:
+			honked = true
+	var now: Vector2 = tr.call("_pos_of", car)
+	_check("v016: cars brake for you in the road (and don't hit you)", float(car["speed"]) < 0.3 and now.distance_to(person) > 2.0)
+	_check("v016: ...then lean on the horn", honked)
+	# Red light: a car rolling up to a crossing on red stops at the line.
+	var cross:= Vector2(CityBlocks.NS_ROADS[2], CityBlocks.EW_ROADS[2])
+	var p2:= PackedVector2Array([cross + Vector2(1.8, 40), cross + Vector2(1.8, -40)])   # northbound
+	var body2:= AnimatableBody3D.new()
+	body2.sync_to_physics = false
+	var c2:= {"body": body2, "path": p2, "seg": 0, "u": 0.0, "speed": Traffic.SPEED, "yaw": PI, "honk": 0.0, "stuck": 0.0, "ghost": 0.0}
+	tr.add_child(c2["body"])
+	tr.set("_clock", 15.0)   # east-west green, north-south red
+	for i in 100:
+		tr.call("_drive", c2, 0.05, [])
+		tr.set("_clock", 15.0)
+	var pz: float = (tr.call("_pos_of", c2) as Vector2).y
+	_check("v016: cars stop at a red light, before the crossing", float(c2["speed"]) < 0.3 and pz > cross.y + CityBlocks.ROAD_HALF + 3.0)
+	# Three minutes of traffic: every car keeps getting round (no gridlock at the corners).
+	tr.set_physics_process(false)
+	var driven:= {}
+	var last:= {}
+	for c in tr.cars:
+		driven[c["body"]] = 0.0
+		last[c["body"]] = tr.call("_pos_of", c)
+	for step in 3600:
+		tr.set("_clock", float(tr.get("_clock")) + 0.05)
+		for c in tr.cars:
+			tr.call("_drive", c, 0.05, [])
+			var pc: Vector2 = tr.call("_pos_of", c)
+			driven[c["body"]] += pc.distance_to(last[c["body"]])
+			last[c["body"]] = pc
+	var least:= INF
+	for k in driven:
+		least = minf(least, driven[k])
+	print("traffic soak: least driven in 3 min = %.0f m" % least)
+	_check("v016: traffic never gridlocks (every car keeps moving over 3 minutes)", least > 300.0)
+	city.free()
 	GameState.reset()

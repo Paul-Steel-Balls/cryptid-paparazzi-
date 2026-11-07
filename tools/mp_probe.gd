@@ -1,6 +1,7 @@
 ## Two-PC smoke test on one machine (headless):
 ##   godot --headless --path . --script res://tools/mp_probe.gd -- host &
 ##   godot --headless --path . --script res://tools/mp_probe.gd -- client
+## (Timings allow for the client starting ~4 s after the host and the maps taking a while to load.)
 ## Prints what each side sees (puppets, remote players, bait, a grab, the host ending the night).
 extends SceneTree
 var role:= ""
@@ -71,14 +72,14 @@ func _process(d):
 		m.get("_player").select_item("tripod")
 		m.get("_player").use_item()
 		m.call("_summon_ufo")
-	if role == "host" and t > 17.5 and not has_meta("props_report"):
+	if role == "host" and t > 24.0 and not has_meta("props_report"):
 		set_meta("props_report", true)
 		print("HOST sees client tripods=", m.get("_net")._ghost_tripods.size(), " client ufos=", m.get("_net")._ghost_ufos.size())
-	if t > 17.8 and not has_meta("voice_report") and m.get("_net") != null:
+	if t > 24.0 and not has_meta("voice_report") and m.get("_net") != null:
 		set_meta("voice_report", true)
 		for id in m.get("_net").remotes:
 			print(role.to_upper(), " heard ", m.get("_net").remotes[id].voice_samples, " voice samples from ", id)
-	if role == "host" and phase == 0 and t > 18.5:
+	if role == "host" and phase == 0 and t > 23.0:
 		phase = 1
 		var cs = m.get("_cryptids")
 		var ns = m.get("_net")
@@ -88,7 +89,8 @@ func _process(d):
 		for id in ns.remotes:
 			print("HOST sees remote ", id, " at ", ns.remotes[id].global_position.snapped(Vector3.ONE * 0.1), " name=", net.name_of(id))
 		print("HOST bait=", get_nodes_in_group("bait").size())
-	if role == "host" and phase == 0 and t > 16.0 and t < 16.02:
+	if role == "host" and phase == 0 and t > 22.0 and not has_meta("grabbed"):
+		set_meta("grabbed", true)
 		var cs = m.get("_cryptids")
 		var ns = m.get("_net")
 		for id in ns.remotes:
@@ -97,18 +99,19 @@ func _process(d):
 			m.call("_on_caught", cs[0])
 	if role == "client" and phase == 2 and t > 14.5 and gs.unsold_photos.is_empty():
 		gs.unsold_photos = [{"value": 77, "species": ["cornicorn"]}]
-	if role == "client" and t > 18.6 and t < 18.62:
+	if role == "client" and t > 21.0 and not has_meta("grab_report"):
+		set_meta("grab_report", true)
 		print("CLIENT after being grabbed: unsold=", gs.unsold_photos.size(), " pos=", p.global_position.snapped(Vector3.ONE))
-	if role == "host" and phase == 1 and t > 19.0:
+	if role == "host" and phase == 1 and t > 26.0:
 		phase = 2
 		m.call("_sleep")
-	if role == "client" and phase == 3 and t > 30.0:
+	if role == "client" and phase == 3 and t > 36.0:
 		phase = 4
 		var cs = m.get("_cryptids")
 		print("CLIENT after host slept: night=", gs.night, " puppets=", cs.size(), " remotes=", m.get("_net").remotes.keys())
-	if role == "host" and phase == 2 and t > 30.0:
+	if role == "host" and phase == 2 and t > 36.0:
 		phase = 3
 		print("HOST after sleep: night=", gs.night, " ready=", m.get("_net")._ready_peers.keys(), " remotes=", m.get("_net").remotes.keys())
-	if t > float(OS.get_environment("LIFE") if OS.get_environment("LIFE") != "" else "32"):
+	if t > float(OS.get_environment("LIFE") if OS.get_environment("LIFE") != "" else "42"):
 		quit()
 	return false
