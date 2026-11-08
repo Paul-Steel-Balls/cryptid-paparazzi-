@@ -19,16 +19,29 @@ var _speed:= 0.0
 var _back:= false
 var _have:= false
 var _cam_node: Node3D
+var _face_cam: Node3D
+var _arm_aim: ArmAim
+var _aiming:= false
+var _aim_w:= 0.0
+var _hands_empty:= false
+var _skin:= ""
 var _body: Node3D
 ## Proximity voice: their mic, played from their mouth, quieter with distance.
 var _voice: AudioStreamPlayer3D
 var _voice_pb: AudioStreamGeneratorPlayback
 var _talk_until:= 0.0
 var voice_samples:= 0      # received so far (tests)
+## Other players are on their own physics layer that your body ignores: you walk through each
+## other. (When they were solid, two players arriving on the same spot climbed onto each
+## other's heads, each PC lifting the other, and shot into the sky.) Photo and sight-line
+## rays still hit them.
+const LAYER:= 8
 
 
 func _ready() -> void:
 	add_to_group("traffic_stop")   # City cars brake for you
+	collision_layer = LAYER
+	collision_mask = 0
 	var cs:= CollisionShape3D.new()
 	var cap:= CapsuleShape3D.new()
 	cap.radius = 0.35
@@ -37,17 +50,7 @@ func _ready() -> void:
 	add_child(cs)
 	_body = Node3D.new()
 	add_child(_body)
-	model = CharacterModel.load_model("res://models/photographer.glb", 0.012)
-	model.rotation.y = PI
-	model.position.y = -Player.STAND_HEIGHT * 0.5
-	model.scale = Vector3.ONE * 0.9
-	_body.add_child(model)
-	Player.attach_camera(model)
-	_cam_node = model.find_child("ChestCamera", true, false)
-	model.play("idle")
-	if model.skeleton:
-		_head = HeadLook.new()
-		model.skeleton.add_child(_head)
+	_build_model(Net.skin_of(peer_id))
 	_label = Label3D.new()
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label.font = load("res://fonts/Oswald.ttf")
@@ -71,11 +74,40 @@ func _ready() -> void:
 	refresh_name()
 
 
+## Their outfit (Skins) with the camera on the chest and one ready at the face.
+func _build_model(sk: String) -> void:
+	if model:
+		model.queue_free()
+	_skin = sk
+	model = CharacterModel.load_model(Skins.model_path(sk), 0.012)
+	model.rotation.y = PI
+	model.position.y = -Player.STAND_HEIGHT * 0.5
+	model.scale = Vector3.ONE * 0.9
+	_body.add_child(model)
+	var si:= Skins.info(sk)
+	Player.attach_camera(model, 1, float(si["cam_z"]))
+	_cam_node = model.find_child("ChestCamera", true, false)
+	_face_cam = Player.attach_face_camera(model, 1, float(si["face_z"]))
+	if _face_cam:
+		_face_cam.visible = false
+	model.play("idle")
+	_head = null
+	_arm_aim = null
+	if model.skeleton:
+		_head = HeadLook.new()
+		model.skeleton.add_child(_head)
+		_arm_aim = ArmAim.new()   # after HeadLook: the hands reach for where the head ends up
+		_arm_aim.setup(model)
+		model.skeleton.add_child(_arm_aim)
+
+
 func refresh_name() -> void:
 	if _label:
 		_label.text = Net.name_of(peer_id)
 		_label.modulate = Net.color_of(peer_id).lerp(Color.WHITE, 0.35)
-	if model and Net.players.has(peer_id):
+	if _body != null and Net.players.has(peer_id) and Net.skin_of(peer_id) != _skin:
+		_build_model(Net.skin_of(peer_id))
+	if model and Net.players.has(peer_id) and Skins.has_cap(_skin):
 		Player.set_cap_color(model, Net.color_of(peer_id))
 
 
@@ -91,8 +123,8 @@ func apply_state(st: Array) -> void:
 	_back = bool(st[6])
 	indoors = bool(st[8])
 	snared = bool(st[9])
-	if _cam_node:
-		_cam_node.visible = not bool(st[10])
+	_hands_empty = bool(st[10])
+	_aiming = bool(st[11]) if st.size() > 11 else _anim == "aim"
 	if not _have:
 		global_position = _target
 		_have = true
@@ -150,6 +182,14 @@ func _process(delta: float) -> void:
 	if _head:
 		_head.yaw = -_body_rel
 		_head.pitch = -_pitch * 0.6
+	# Camera up to the eye: arms rise, the camera moves from the chest to the face.
+	_aim_w = move_toward(_aim_w, 1.0 if _aiming and not _hands_empty else 0.0, delta * 5.0)
+	if _arm_aim:
+		_arm_aim.weight = _aim_w
+	if _cam_node:
+		_cam_node.visible = not _hands_empty and _aim_w < 0.5
+	if _face_cam:
+		_face_cam.visible = not _hands_empty and _aim_w >= 0.5
 	if _label:
 		var talking:= is_talking()
 		var want:= Net.name_of(peer_id) + ("  ((•))" if talking else "")

@@ -5,12 +5,12 @@ Photograph cryptids for the tabloid. Meet the quota, don't get caught.
 Godot 4.7.2, Forward+ renderer, built for Windows PC.
 
 ## Download and play (Windows)
-1. Download **[CryptidPaparazzi-0.16-windows.zip](https://github.com/Paul-Steel-Balls/cryptid-paparazzi-/raw/main/download/CryptidPaparazzi-0.16-windows.zip)** (about 78 MB).
-2. Unzip it and run `CryptidPaparazzi-0.16.exe`. It's one file with everything inside. Windows SmartScreen may warn because it isn't code-signed: click "More info", then "Run anyway".
+1. Download **[CryptidPaparazzi-0.17-windows.zip](https://github.com/Paul-Steel-Balls/cryptid-paparazzi-/raw/main/download/CryptidPaparazzi-0.17-windows.zip)** (about 89 MB).
+2. Unzip it and run `CryptidPaparazzi-0.17.exe`. It's one file with everything inside. Windows SmartScreen may warn because it isn't code-signed: click "More info", then "Run anyway".
 3. To play together, see [Multiplayer](#multiplayer-co-op-up-to-4) below. Everyone should be on the same version.
 
 ## Run from source
-Open this folder in Godot 4.7.2 (it imports on first open) and press Play, or run `./build.sh 0.16` to run the tests and export a Windows `.exe`.
+Open this folder in Godot 4.7.2 (it imports on first open) and press Play, or run `./build.sh 0.17` to run the tests and export a Windows `.exe`.
 
 ## Where this came from
 
@@ -38,6 +38,7 @@ The source was recovered from `CryptidPaparazzi_2.apk`, version 0.2, package `co
 | Pause, settings, Cryptid Files, Multiplayer | Esc |
 | Fullscreen | F11 or Alt+Enter (or the pause menu) |
 | Talk to nearby players (online, with Microphone on) | Hold T (or set open mic in the pause menu) |
+| Agree / say no to sleeping or driving on (online) | Y / N |
 | Microphone (optional, off by default) | Pause menu → Microphone. Cryptids hear you talk: a whisper carries ~8 m, a yell ~35 m |
 
 ## Layout
@@ -78,6 +79,9 @@ The source was recovered from `CryptidPaparazzi_2.apk`, version 0.2, package `co
 | `scripts/hud.gd` | In-game overlay: night + timer, $ (green) and undeveloped $ (yellow), compass strip, camera viewfinder with film count, bait/trap selector, prompts, stun white-out, win/lose screens |
 | `scripts/touch_controls.gd` | Mobile joystick, look-drag, snap and interact buttons |
 | `scripts/city.gd` | The City: 5x5 street grid of colourful low-rises, brick walk-ups (fire escapes, awnings, AC units), rowhouses, glass towers, police station, hospital, garage, City Hall; park, playground, parking lots, overpass with the encampment, river and bridge, footbridge, traffic lights, power lines, bollards, bike lanes. Repeated bits are batched into MultiMeshes. Also the road graph City cryptids use to walk round blocks |
+| `scripts/skins.gd`, `scripts/wardrobe_ui.gd` | Outfits (DRIP CITY, the City's costume shop, and the closet in the RV): catalogue, prices, the try-on screen |
+| `tools/skins.py` | The outfits themselves, sculpted over the photographer (`python3 tools/characters.py models photographer_<id>`) |
+| `scripts/arm_aim.gd` | Other players raising their camera: two-bone IK puts both hands on the camera at their face |
 | `scripts/traffic.gd` | The City's moving cars and the traffic-light cycle: they keep right, stop at reds, brake for anyone in the road and honk at you |
 | `tools/make_wanted.py` | Sketch-artist WANTED posters (`ui/wanted/`) for cryptids you haven't got on film yet |
 | `scripts/pedestrian.gd` | City folk walking the sidewalks (they set off tripod cams) |
@@ -91,7 +95,7 @@ The source was recovered from `CryptidPaparazzi_2.apk`, version 0.2, package `co
 | `scripts/remote_player.gd` | Another player in your world (and a cryptid target on the host) |
 | `scripts/multiplayer_panel.gd` | Pause → MULTIPLAYER |
 | `tools/mp_probe.gd` | Runs a host and a client on one machine and prints what each sees |
-| `tests/test_runner.gd` | Headless test suite (313 checks) |
+| `tests/test_runner.gd` | Headless test suite (336 checks) |
 
 ## Build
 
@@ -119,10 +123,11 @@ One `.exe` with everything inside. Windows SmartScreen may warn the first time b
 - **Join**: Esc → MULTIPLAYER → type the host's address → JOIN.
   - Same house: use the address the host's panel shows (e.g. 192.168.1.20).
   - Over the internet: the host either forwards **UDP port 24680** on their router to their PC and gives friends their public IP, or everyone installs a free VPN like Tailscale and joins with the host's Tailscale IP (no router setup).
-- Only the host can sleep or drive; everyone follows. Money, photos, album and unlocks are each player's own.
+- Anyone can ask to sleep (bed or bunk) or drive on (driver's seat), but it only happens when **everyone** says yes (Y / N, 45 s to answer); one "no" calls it off. Then the host's RV takes everyone. Money, photos, album, outfits and unlocks are each player's own.
+- Other players are on your compass (in their colours), and you walk through each other rather than bumping.
 - Online, getting grabbed knocks you out (you lose your undeveloped film and come to at camp) instead of ending the night. The joint just makes you high (no slow-mo: the cryptids are shared).
 - **Proximity voice**: turn on Microphone in the pause menu, then hold T to talk (or switch to open mic). Your voice plays from your character, so it fades with distance; cryptids nearby hear it too. There's a volume slider for other players' voices.
-- Everyone wears a cap in their own colour (red, blue, green, yellow) with their name over their head.
+- Everyone has their name over their head in their colour (and a cap in that colour if they're in the classic outfit). Outfits from DRIP CITY show up for everyone.
 - Tripod cams and UFOs are seen by everyone. Snap someone else's UFO and you get the (one-time) money.
 - Not shared yet: City pedestrians (each PC has its own).
 - Command line: `CryptidPaparazzi.exe -- --host`, `-- --join=1.2.3.4`, `-- --name=Ian`.
@@ -134,6 +139,7 @@ One `.exe` with everything inside. Windows SmartScreen may warn the first time b
 4. Cryptids with a `home` (Methman's camp, the Jersey Devil's tailgate, the Leperchaun's gold) get their spot on any map they live on. The City places them itself (`scripts/city.gd` `landmarks`).
 
 ## Changelog
+- **0.17**: **Fixed**: after driving to a new map, everyone arrived on the same spot and, because other players were solid, climbed onto each other's heads and shot into the sky; now you walk through each other and everyone gets their own spot by the RV. **Fixed**: after a map change a microphone could replay the same sentence on a loop; the mic now survives map changes and restarts cleanly after any long hitch. **DRIP CITY**, a costume shop on the City's camp road (neon sign, mannequins in the window): 13 outfits from $600 to $4000 (Hawaiian Dad, Toe Superfan with a giant foam toe hat, Ghillie Suit, Bigfoot Onesie, Clown, Banana, Hot Dog, Disco King, Pirate Captain with a parrot, Astronaut, Shark Attack, Inflatable T-Rex, Tinfoil Tux); change into anything you own at the shop or the new closet in the RV; others see your outfit online. **Votes**: nobody sleeps or drives on unless everyone agrees (Y / N). Other players on the compass. **Camp is a safe zone** (nothing chases, grabs, flashes or beams you up there); the ring of posts round camp is gone. Other players now raise the camera properly to their face (hands on it, following where they look, even while walking). **Plants**: detailed pines with drooping needle boughs and dead stubs, birches with forked limbs and black-marked bark, leafy crowns and bushes, layered mossy rocks with lichen, real flowers (stems, leaves, petals), arching ferns, spotted toadstools, and grass tufts everywhere; they sway a little in the wind. Detail is drawn up close and the simple versions further off, so frames are actually lighter than before.
 - **0.16**: Maps 50% bigger again (1.8x the original across, over 3x the ground); roaming commons now turn up in two separate groups so the extra space isn't empty. The City is rebuilt along the lines of the reference pictures: colourful low-rises with shop signs and striped awnings, NYC brick walk-ups with fire escapes, green awnings and window AC units, pitched-roof rowhouses behind the camp, a police station (patrol cars with flashing light bars), a hospital with an ambulance, a garage, City Hall with its green dome, a playground (the swings move on their own), scaffolding, a walkable footbridge over 34th, bus stops, wide zebra crossings, green bike lanes, parking lanes, power lines and chained bollards. Real traffic: cars and taxis drive round the blocks, stop at the (working) traffic lights, brake for you, pedestrians and cryptids, and honk if you stand in the road. Cryptid Files: anything you haven't photographed yet shows a sketch-artist WANTED poster until you develop a good shot. Toe Rogan's nail reads as a nail now (pink with a white tip, half-moon and cuticle) and his tee is black. The Multiplayer screen scrolls instead of running off the bottom of the window.
 - **0.15**: The Rake: stare at it for more than a few seconds and it vanishes in a puff of grit and reappears 9 to 14 m behind you, already coming. No more countdown on screen: the moon is the clock, rising in the east, peaking overhead at midnight and setting in the west at dawn (shadows swing round with it). A clear photo of the UFO pays a flat $500 (once per visit).
 - **0.14**: **Toe Rogan's head is now a Thumb-Thumb-style toe**: one tall, smooth column of skin with a big oval nail on the upper front and two knuckle creases, no face, rising out of a red V-neck (with crisp sleeves, no more colour bleeding). **Day and night**: a night lasts 15 minutes (the HUD counts down to dawn); at dawn the cryptids, the UFO and Santa leave, the sky brightens, and nothing comes out until you sleep in the RV. **UFO**: now comes after 10 tourist photos in a night (warnings at 7 and 9), pays about a quarter of what it did and only for the first photo, and doesn't leave when photographed: you have to beat the tractor beam (mash A/D) to get rid of it (or hide in the RV until morning). **Pause menu**: Settings (graphics, sound, mouse, mic) and Controls (every key and mouse button rebindable; click, press, done; swaps if the key was taken; reset to defaults) are their own pages. **Maps are 20% bigger** across (44% more ground), with the same density of trees, bushes and rocks; the City's streets, blocks, river, overpass and everything on them spread out to match. **City chases**: cryptids no longer snag on parked cars, sidewalk trees, stands or overpass pillars (they pass through street furniture; you don't), and hunters follow your footsteps round corners for longer.

@@ -33,10 +33,15 @@ def boot(ch, bone, x, color, sole=(0.12, 0.08, 0.06), length=0.13, h=0.07):
     ch.add(box((x, 0.015, 0.04), (0.062, 0.015, length * 0.95), bone, sole, r=0.012, k=0.01))
 
 # =============================================================================== PHOTOGRAPHER
-def photographer():
+def photographer(skin="default"):
+    """The player. skin picks an outfit from SKINS (tools/skins.py): same skeleton and
+    animations, so every outfit walks, aims and holds the camera exactly the same."""
     s = humanoid(Skeleton(), hips_y=0.95, shoulder_w=0.2, shoulder_y=1.40, neck_y=1.48, hip_w=0.1,
                  knee_y=0.52, ankle_y=0.1, head_y=1.58, elbow_drop=0.26, wrist_drop=0.23, arm_out=0.1)
-    ch = Character("photographer", s, voxel=0.014)
+    # Outfits are sculpted a touch coarser: they're bigger and smoother, and there are a lot of them.
+    ch = Character("photographer" if skin == "default" else "photographer_" + skin, s, voxel=0.014 if skin == "default" else 0.018)
+    if skin != "default":
+        ch.group_voxel = {"cloth": 0.017, "shiny": 0.011, "metal": 0.013}
     shirt = (0.15, 0.55, 0.6); vest = (0.62, 0.55, 0.36); vest_d = (0.5, 0.43, 0.27)
     jeans = speckle((0.2, 0.3, 0.55), 0.08, 40); boots = (0.38, 0.24, 0.12); red = (0.85, 0.12, 0.1)
     def torso_col(p):
@@ -44,44 +49,62 @@ def photographer():
         front = (np.abs(p[:, 0]) < 0.045 + (1.42 - p[:, 1]) * 0.05) & (p[:, 2] > 0)
         out[front] = shirt
         return out
+    L = dict(face=SKIN, hair=(0.35, 0.22, 0.12), cap=red, torso=torso_col, pockets=vest_d, hips=jeans, belt=(0.3, 0.2, 0.1),
+             backpack=True, upper_arm=shirt, cuff=shirt, forearm=SKIN, hands=SKIN, thigh=jeans, shin=jeans, boots=boots,
+             eyes=True, extra=None)
+    if skin != "default":
+        import skins as _skins
+        L.update(_skins.SKINS[skin](s))
+    face = L["face"]
     # head
-    ch.add(ellipsoid((0, 1.66, 0.01), (0.135, 0.155, 0.14), "head", SKIN, k=0.02))
-    ch.add(ellipsoid((0, 1.6, 0.06), (0.11, 0.08, 0.1), "head", SKIN, k=0.04))  # cheeks/jaw
-    ch.add(sphere((0, 1.645, 0.155), 0.034, "head", (0.95, 0.62, 0.5), k=0.02))   # nose
-    ch.add(mirror(lambda x: ellipsoid((x * 0.135, 1.65, 0.0), (0.025, 0.045, 0.032), "head", SKIN, k=0.015)))
-    cartoon_eyes(ch, "head", 1.685, 0.118, 0.052, 0.027)
-    ch.add(mirror(lambda x: capsule((x * 0.025, 1.725, 0.135), (x * 0.08, 1.735, 0.12), 0.011, "head", (0.3, 0.2, 0.12), k=0.004)))
-    ch.add(capsule((-0.04, 1.595, 0.135), (0.04, 1.6, 0.135), 0.009, "head", (0.55, 0.2, 0.2), k=0.006))
-    ch.add(ellipsoid((0, 1.67, -0.06), (0.14, 0.12, 0.1), "head", (0.35, 0.22, 0.12), k=0.02, noise=(0.006, 30)))  # hair
+    ch.add(ellipsoid((0, 1.66, 0.01), (0.135, 0.155, 0.14), "head", face, k=0.02))
+    ch.add(ellipsoid((0, 1.6, 0.06), (0.11, 0.08, 0.1), "head", face, k=0.04))  # cheeks/jaw
+    ch.add(sphere((0, 1.645, 0.155), 0.034, "head", L.get("nose", (0.95, 0.62, 0.5)), k=0.02))   # nose
+    ch.add(mirror(lambda x: ellipsoid((x * 0.135, 1.65, 0.0), (0.025, 0.045, 0.032), "head", face, k=0.015)))
+    if L["eyes"]:
+        cartoon_eyes(ch, "head", 1.685, 0.118, 0.052, 0.027)
+        ch.add(mirror(lambda x: capsule((x * 0.025, 1.725, 0.135), (x * 0.08, 1.735, 0.12), 0.011, "head", (0.3, 0.2, 0.12), k=0.004)))
+    ch.add(capsule((-0.04, 1.595, 0.135), (0.04, 1.6, 0.135), 0.009, "head", L.get("mouth", (0.55, 0.2, 0.2)), k=0.006))
+    if L["hair"] is not None:
+        ch.add(ellipsoid((0, 1.67, -0.06), (0.14, 0.12, 0.1), "head", L["hair"], k=0.02, noise=(0.006, 30)))  # hair
     # cap
-    ch.add(ellipsoid((0, 1.745, 0.0), (0.15, 0.085, 0.155), "head", red, k=0.008))
-    ch.add(ellipsoid((0, 1.735, 0.15), (0.11, 0.012, 0.1), "head", (0.75, 0.08, 0.08), k=0.004))
-    ch.add(sphere((0, 1.83, 0.0), 0.018, "head", (0.75, 0.08, 0.08), k=0.006))
+    if L["cap"] is not None:
+        ch.add(ellipsoid((0, 1.745, 0.0), (0.15, 0.085, 0.155), "head", L["cap"], k=0.008))
+        dark = (0.75, 0.08, 0.08) if skin == "default" else tuple(np.array(L["cap"]) * 0.88)
+        ch.add(ellipsoid((0, 1.735, 0.15), (0.11, 0.012, 0.1), "head", dark, k=0.004))
+        ch.add(sphere((0, 1.83, 0.0), 0.018, "head", dark, k=0.006))
     # neck + torso
-    ch.add(capsule((0, 1.44, 0), (0, 1.56, 0.01), 0.055, "neck", SKIN, k=0.02))
-    ch.add(ellipsoid((0, 1.24, 0), (0.2, 0.23, 0.125), "chest", torso_col, k=0.03))
-    ch.add(ellipsoid((0, 1.06, 0.0), (0.18, 0.14, 0.12), "spine", torso_col, k=0.05))
-    for x in (-0.1, 0.1):
-        ch.add(box((x, 1.1, 0.12), (0.045, 0.04, 0.015), "spine", vest_d, r=0.01, k=0.005))
-        ch.add(box((x, 1.28, 0.12), (0.04, 0.035, 0.013), "chest", vest_d, r=0.01, k=0.005))
-    ch.add(ellipsoid((0, 0.93, 0), (0.17, 0.11, 0.115), "hips", jeans, k=0.04))
-    ch.add(box((0, 0.99, 0.0), (0.172, 0.018, 0.118), "hips", (0.3, 0.2, 0.1), r=0.015, k=0.006))  # belt
+    ch.add(capsule((0, 1.44, 0), (0, 1.56, 0.01), 0.055, "neck", L.get("neck", face), k=0.02))
+    ch.add(ellipsoid((0, 1.24, 0), (0.2, 0.23, 0.125), "chest", L["torso"], k=0.03))
+    ch.add(ellipsoid((0, 1.06, 0.0), (0.18, 0.14, 0.12), "spine", L["torso"], k=0.05))
+    if L["pockets"] is not None:
+        for x in (-0.1, 0.1):
+            ch.add(box((x, 1.1, 0.12), (0.045, 0.04, 0.015), "spine", L["pockets"], r=0.01, k=0.005))
+            ch.add(box((x, 1.28, 0.12), (0.04, 0.035, 0.013), "chest", L["pockets"], r=0.01, k=0.005))
+    ch.add(ellipsoid((0, 0.93, 0), (0.17, 0.11, 0.115), "hips", L["hips"], k=0.04))
+    if L["belt"] is not None:
+        ch.add(box((0, 0.99, 0.0), (0.172, 0.018, 0.118), "hips", L["belt"], r=0.015, k=0.006))  # belt
     # backpack
-    ch.add(box((0, 1.22, -0.17), (0.14, 0.19, 0.07), "chest", (0.75, 0.4, 0.12), r=0.04, k=0.02))
-    ch.add(box((0, 1.12, -0.24), (0.1, 0.07, 0.03), "chest", (0.62, 0.32, 0.1), r=0.02, k=0.01))
+    if L["backpack"]:
+        ch.add(box((0, 1.22, -0.17), (0.14, 0.19, 0.07), "chest", (0.75, 0.4, 0.12), r=0.04, k=0.02))
+        ch.add(box((0, 1.12, -0.24), (0.1, 0.07, 0.03), "chest", (0.62, 0.32, 0.1), r=0.02, k=0.01))
     # (the camera itself is models/camera.glb, hung on the chest bone in the game at about (0, 1.23, 0.19))
     # arms (sleeves rolled to the elbow)
     for side, x in (("l", -1), ("r", 1)):
         sh = np.array(s.heads[s.idx(f"shoulder_{side}")]); el = np.array(s.heads[s.idx(f"elbow_{side}")]); hd = np.array(s.heads[s.idx(f"hand_{side}")])
-        ch.add(capsule(sh, el, 0.058, f"shoulder_{side}", shirt, rb=0.05, k=0.03))
-        ch.add(torus(el + np.array([0, 0.01, 0]), 0.048, 0.016, f"elbow_{side}", shirt, k=0.01))
-        ch.add(capsule(el, hd, 0.045, f"elbow_{side}", SKIN, rb=0.038, k=0.02))
-        hand(ch, f"hand_{side}", hd + np.array([0, -0.05, 0.0]), 0.045, SKIN, side=-x)
+        ch.add(capsule(sh, el, 0.058, f"shoulder_{side}", L["upper_arm"], rb=0.05, k=0.03))
+        if L["cuff"] is not None:
+            ch.add(torus(el + np.array([0, 0.01, 0]), 0.048, 0.016, f"elbow_{side}", L["cuff"], k=0.01))
+        ch.add(capsule(el, hd, 0.045, f"elbow_{side}", L["forearm"], rb=0.038, k=0.02))
+        hand(ch, f"hand_{side}", hd + np.array([0, -0.05, 0.0]), 0.045, L["hands"], side=-x)
         # legs
         hp = np.array(s.heads[s.idx(f"hip_{side}")]); kn = np.array(s.heads[s.idx(f"knee_{side}")]); ft = np.array(s.heads[s.idx(f"foot_{side}")])
-        ch.add(capsule(hp, kn, 0.08, f"hip_{side}", jeans, rb=0.066, k=0.03))
-        ch.add(capsule(kn, ft + np.array([0, 0.04, 0]), 0.066, f"knee_{side}", jeans, rb=0.055, k=0.02))
-        boot(ch, f"foot_{side}", x * 0.1, boots)
+        ch.add(capsule(hp, kn, 0.08, f"hip_{side}", L["thigh"], rb=0.066, k=0.03))
+        ch.add(capsule(kn, ft + np.array([0, 0.04, 0]), 0.066, f"knee_{side}", L["shin"], rb=0.055, k=0.02))
+        if L["boots"] is not None:
+            boot(ch, f"foot_{side}", x * 0.1, L["boots"])
+    if L["extra"] is not None:
+        L["extra"](ch, s)
     hl, el_ = solve_arm(s, "l", (-0.1, 1.2, 0.17)); hr, er_ = solve_arm(s, "r", (0.1, 1.2, 0.17))
     print(f"  camera grip IK error: {el_:.3f} / {er_:.3f} m")
     hold_pose = {**hl, **hr}
@@ -1648,6 +1671,13 @@ def add_reaction_anims(ch):
     for nm, dur, fn in (("eat", 1.4, eat_anim), ("trapped", 1.0, trapped_anim), ("roar", 1.2, roar_anim)):
         if nm not in ch.anims:
             ch.anim(nm, dur, scaled(fn))
+
+try:
+    import skins as _skins_mod
+    for _sk in _skins_mod.SKINS:
+        BUILDERS["photographer_" + _sk] = (lambda k=_sk: photographer(k))
+except ImportError:
+    pass
 
 CRYPTIDS = {"bigboobs", "methman", "wherewolf", "grey_tourist", "jersey_devil", "crackin", "fhairy", "leperchaun", "the_rake", "bent"}
 

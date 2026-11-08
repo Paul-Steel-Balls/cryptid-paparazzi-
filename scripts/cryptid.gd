@@ -501,6 +501,8 @@ func is_player_hidden() -> bool:
 		return false
 	if player_ref.get("indoors") == true:
 		return true   # safe inside the RV
+	if Terrain.in_camp(player_ref.global_position):
+		return true   # ...and anywhere in camp
 	if player_ref.has_method("is_snared") and player_ref.is_snared():
 		return false
 	var p:= Vector2(player_ref.global_position.x, player_ref.global_position.z)
@@ -624,7 +626,7 @@ func _physics_process(delta: float) -> void:
 		# Stare at it too long and it's simply... not there any more. Then it's behind you.
 		if watched:
 			_stare += delta
-			if _stare > _stare_limit:
+			if _stare > _stare_limit and player_ref != null and not Terrain.in_camp(player_ref.global_position):
 				_vanish_and_reappear()
 		else:
 			_stare = maxf(0.0, _stare - delta * 0.5)
@@ -682,6 +684,8 @@ func _physics_process(delta: float) -> void:
 					_lose_timer += delta
 				else:
 					_lose_timer = 0.0
+				if Terrain.in_camp(player_ref.global_position):
+					_lose_timer = distance_lose_time + 1.0   # made it back to camp: they give up
 				if _lose_timer > distance_lose_time or _los_blocked_timer > los_break_time * (1.8 if city != null else 1.0):
 					state = State.WANDER
 					_hide_label()

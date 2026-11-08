@@ -127,6 +127,105 @@ func _vc_mat() -> StandardMaterial3D:
 	return m
 
 
+# ------------------------------------------------------------------ v0.17: detail up close
+## The world is cut into CHUNK-metre squares. Each square draws its plants twice: detailed
+## meshes out to `near` metres, the old low-poly ones beyond (or nothing, for small stuff).
+## Distances are measured to the middle of each square, so detail always reaches a good
+## way past you.
+const CHUNK:= 64.0
+const TREE_NEAR:= 85.0
+const ROCK_NEAR:= 90.0
+const BUSH_NEAR:= 70.0
+const SMALL_NEAR:= 48.0     # flowers, ferns, mushrooms
+const GRASS_NEAR:= 40.0
+
+static var _foliage_shader: Shader
+
+
+## Leaves, needles, grass: vertex colour x instance colour, both sides lit, a gentle sway that
+## grows with height (and a flutter for small stuff).
+static func foliage_mat(sway: float, sway_height: float, flutter: float = 0.0) -> ShaderMaterial:
+	if _foliage_shader == null:
+		_foliage_shader = Shader.new()
+		_foliage_shader.code = """
+shader_type spatial;
+render_mode cull_disabled;
+uniform float sway = 0.05;
+uniform float sway_height = 6.0;
+uniform float flutter = 0.0;
+uniform float emission = 0.0;
+void vertex() {
+	vec3 o = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+	float h = clamp(VERTEX.y / sway_height, 0.0, 1.0);
+	float t = TIME * 1.1 + o.x * 0.21 + o.z * 0.17;
+	vec2 off = vec2(sin(t), cos(t * 0.8 + 1.3)) * sway * h * h;
+	off += vec2(sin(TIME * 5.0 + VERTEX.x * 9.0 + o.z), cos(TIME * 4.3 + VERTEX.z * 9.0 + o.x)) * flutter * h;
+	VERTEX.xz += off;
+}
+void fragment() {
+	ALBEDO = COLOR.rgb;
+	ROUGHNESS = 0.92;
+	SPECULAR = 0.2;
+	EMISSION = COLOR.rgb * emission;
+}
+"""
+	var m:= ShaderMaterial.new()
+	m.shader = _foliage_shader
+	m.set_shader_parameter("sway", sway)
+	m.set_shader_parameter("sway_height", sway_height)
+	m.set_shader_parameter("flutter", flutter)
+	return m
+
+
+## items: [[Transform3D (world), Color], ...]. hi out to `near`, lo beyond (lo may be null).
+func _add_lod(group: String, hi: Mesh, lo: Mesh, hi_mat: Material, lo_mat: Material, items: Array, near: float,
+		shadows: bool = true) -> void:
+	if items.is_empty():
+		return
+	var holder:= get_node_or_null(group) as Node3D
+	if holder == null:
+		holder = Node3D.new()
+		holder.name = group
+		add_child(holder)
+	var cells:= {}
+	for it in items:
+		var o: Vector3 = (it[0] as Transform3D).origin
+		var key:= Vector2i(floori(o.x / CHUNK), floori(o.z / CHUNK))
+		if not cells.has(key):
+			cells[key] = []
+		cells[key].append(it)
+	for key: Vector2i in cells:
+		var list: Array = cells[key]
+		var ysum:= 0.0
+		for it in list:
+			ysum += (it[0] as Transform3D).origin.y
+		var centre:= Vector3((key.x + 0.5) * CHUNK, ysum / list.size(), (key.y + 0.5) * CHUNK)
+		for lod in 2:
+			var mesh: Mesh = hi if lod == 0 else lo
+			if mesh == null:
+				continue
+			var mm:= _new_multimesh(mesh, list.size(), true)
+			for i in list.size():
+				var xf: Transform3D = list[i][0]
+				mm.set_instance_transform(i, Transform3D(xf.basis, xf.origin - centre))
+				mm.set_instance_color(i, list[i][1])
+			var mmi:= MultiMeshInstance3D.new()
+			mmi.name = "%s_%d_%d_%s" % [group, key.x, key.y, "hi" if lod == 0 else "lo"]
+			mmi.multimesh = mm
+			mmi.material_override = hi_mat if lod == 0 else lo_mat
+			mmi.position = centre
+			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+			if lod == 0:
+				mmi.visibility_range_end = near
+				mmi.visibility_range_end_margin = 8.0
+			else:
+				mmi.visibility_range_begin = near
+				mmi.visibility_range_begin_margin = 8.0
+			if not shadows:
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			holder.add_child(mmi)
+
+
 func _build_trees() -> void:
 	# Forest stands where density noise is high; meadows elsewhere.
 	var attempts:= 0
@@ -154,6 +253,7 @@ func _build_trees() -> void:
 	var trunk_c: Color = style["trunk"]
 	var autumn_chance:= float(style["autumn"])
 	var pine_share:= float(style["pine_share"])
+	var birch:= trunk_c.v > 0.7    # pale trunks (Lakeside): birches, with their black markings
 	var autumns:= [Color(0.9, 0.5, 0.1), Color(0.85, 0.3, 0.1), Color(0.95, 0.75, 0.2)]
 	var groups:= {}   # "pine0" -> [[transform, canopy colour, trunk colour], ...]
 	for p in tree_spots:
@@ -180,23 +280,27 @@ func _build_trees() -> void:
 		cs.shape = cyl
 		cs.position = base + Vector3(0, 2.0 * sc, 0)
 		_colliders.add_child(cs)
+	var bark_mat:= _vc_mat()
+	var needle_mat:= foliage_mat(0.07, 7.0)
+	var leaf_mat:= foliage_mat(0.09, 7.0, 0.015)
+	var lo_leaf:= _vc_mat()
+	lo_leaf.cull_mode = BaseMaterial3D.CULL_DISABLED
 	for key in groups:
 		var list: Array = groups[key]
 		var variant:= int(str(key).right(1))
 		var is_pine:= str(key).begins_with("pine")
-		var canopy: Mesh = PlantMeshes.pine_canopy(variant) if is_pine else PlantMeshes.broadleaf_canopy(variant)
-		var trunk_mesh: Mesh = PlantMeshes.trunk(variant) if is_pine else PlantMeshes.trunk(variant + 3, 5.2, 0.24, 0.08)
-		var mm_t:= _new_multimesh(trunk_mesh, list.size(), true)
-		var mm_c:= _new_multimesh(canopy, list.size(), true)
-		for i in list.size():
-			mm_t.set_instance_transform(i, list[i][0])
-			mm_t.set_instance_color(i, list[i][2])
-			mm_c.set_instance_transform(i, list[i][0])
-			mm_c.set_instance_color(i, list[i][1])
-		_add_mm(mm_t, _vc_mat(), "TreeTrunks_" + str(key))
-		var leaf_mat:= _vc_mat()
-		leaf_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		_add_mm(mm_c, leaf_mat, "TreeCanopy_" + str(key))
+		var canopy_hi: Mesh = PlantMeshes.pine_hi(variant) if is_pine else PlantMeshes.broadleaf_hi(variant)
+		var canopy_lo: Mesh = PlantMeshes.pine_canopy(variant) if is_pine else PlantMeshes.broadleaf_canopy(variant)
+		var trunk_hi: Mesh = PlantMeshes.trunk_hi(variant, 5.6, 0.32, 0.1, false, 0, 5) if is_pine \
+			else PlantMeshes.trunk_hi(variant + 3, 4.6, 0.26, 0.12, birch, 3, 0)
+		var trunk_lo: Mesh = PlantMeshes.trunk(variant) if is_pine else PlantMeshes.trunk(variant + 3, 5.2, 0.24, 0.08)
+		var trunks: Array = []
+		var crowns: Array = []
+		for it in list:
+			trunks.append([it[0], it[2]])
+			crowns.append([it[0], it[1]])
+		_add_lod("TreeTrunks_" + str(key), trunk_hi, trunk_lo, bark_mat, bark_mat, trunks, TREE_NEAR)
+		_add_lod("TreeCanopy_" + str(key), canopy_hi, canopy_lo, needle_mat if is_pine else leaf_mat, lo_leaf, crowns, TREE_NEAR)
 
 
 func _build_rocks() -> void:
@@ -215,9 +319,8 @@ func _build_rocks() -> void:
 		by_variant[rng.randi_range(0, 2)].append(i)
 	for v in 3:
 		var idx: Array = by_variant[v]
-		if idx.is_empty():
-			continue
-		var mm:= _new_multimesh(PlantMeshes.rock(v), idx.size(), true)
+		var hi_items: Array = []
+		var lo_items: Array = []
 		for k in idx.size():
 			var i: int = idx[k]
 			var p: Vector2 = spots[i]["p"]
@@ -225,10 +328,15 @@ func _build_rocks() -> void:
 			var g:= ground(p.x, p.y)
 			# Keep the visual within the collider so cameras can't end up inside a rock.
 			var b:= Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(r * rng.randf_range(0.9, 1.0), r * 0.68, r * 0.95))
-			mm.set_instance_transform(k, Transform3D(b, g + Vector3(0, r * 0.3, 0)))
+			var xf:= Transform3D(b, g + Vector3(0, r * 0.3, 0))
 			var grey:= rng.randf_range(0.48, 0.66)
-			mm.set_instance_color(k, Color(grey, grey, grey + 0.04).lerp(rock_tint, 0.35))
-		_add_mm(mm, _vc_mat(), "Boulders%d" % v)
+			lo_items.append([xf, Color(grey, grey, grey + 0.04).lerp(rock_tint, 0.35)])
+			# Up close the colours are in the mesh (stone, moss, lichen): just vary brightness and tint a little.
+			var bright:= rng.randf_range(0.85, 1.12)
+			hi_items.append([xf, Color(bright, bright, bright).lerp(rock_tint * 1.6, 0.18)])
+		# Same transforms, two colourings: hi and lo go in as separate groups with the same split.
+		_add_lod("Boulders%d" % v, PlantMeshes.rock_hi(v), null, _vc_mat(), null, hi_items, ROCK_NEAR)
+		_add_lod_far("Boulders%d" % v, PlantMeshes.rock(v), _vc_mat(), lo_items, ROCK_NEAR)
 	for i in spots.size():
 		var p: Vector2 = spots[i]["p"]
 		var r: float = spots[i]["r"]
@@ -240,6 +348,44 @@ func _build_rocks() -> void:
 		cs.shape = sh
 		cs.position = g + Vector3(0, r * 0.35, 0)
 		_colliders.add_child(cs)
+
+
+## The far half of _add_lod on its own (when near and far need different instance colours).
+func _add_lod_far(group: String, lo: Mesh, lo_mat: Material, items: Array, near: float) -> void:
+	if items.is_empty():
+		return
+	var holder:= get_node_or_null(group) as Node3D
+	if holder == null:
+		holder = Node3D.new()
+		holder.name = group
+		add_child(holder)
+	var cells:= {}
+	for it in items:
+		var o: Vector3 = (it[0] as Transform3D).origin
+		var key:= Vector2i(floori(o.x / CHUNK), floori(o.z / CHUNK))
+		if not cells.has(key):
+			cells[key] = []
+		cells[key].append(it)
+	for key: Vector2i in cells:
+		var list: Array = cells[key]
+		var ysum:= 0.0
+		for it in list:
+			ysum += (it[0] as Transform3D).origin.y
+		var centre:= Vector3((key.x + 0.5) * CHUNK, ysum / list.size(), (key.y + 0.5) * CHUNK)
+		var mm:= _new_multimesh(lo, list.size(), true)
+		for i in list.size():
+			var xf: Transform3D = list[i][0]
+			mm.set_instance_transform(i, Transform3D(xf.basis, xf.origin - centre))
+			mm.set_instance_color(i, list[i][1])
+		var mmi:= MultiMeshInstance3D.new()
+		mmi.name = "%s_%d_%d_lo" % [group, key.x, key.y]
+		mmi.multimesh = mm
+		mmi.material_override = lo_mat
+		mmi.position = centre
+		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		mmi.visibility_range_begin = near
+		mmi.visibility_range_begin_margin = 8.0
+		holder.add_child(mmi)
 
 
 func _build_bushes() -> void:
@@ -265,27 +411,16 @@ func _build_bushes() -> void:
 		var b:= Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(r, r * rng.randf_range(0.75, 0.95), r))
 		groups[rng.randi_range(0, 2)].append([Transform3D(b, g), bush_colors[rng.randi_range(0, bush_colors.size() - 1)]])
 		bushes.append({"pos": p, "radius": r})
+	var lo_mat:= _vc_mat()
+	var hi_mat:= foliage_mat(0.025, 1.6, 0.012)
 	for v in 3:
-		var list: Array = groups[v]
-		if list.is_empty():
-			continue
-		var mm:= _new_multimesh(PlantMeshes.bush(v), list.size(), true)
-		for k in list.size():
-			mm.set_instance_transform(k, list[k][0])
-			mm.set_instance_color(k, list[k][1])
-		_add_mm(mm, _vc_mat(), "Bushes%d" % v)
+		_add_lod("Bushes%d" % v, PlantMeshes.bush_hi(v), PlantMeshes.bush(v), hi_mat, lo_mat, groups[v], BUSH_NEAR)
 
 
-## Deep Woods undergrowth: fern clumps (fans of flattened cones), mostly under the trees.
+## Deep Woods undergrowth: fern clumps with arching, leafy fronds, mostly under the trees.
 func _build_ferns(n: int) -> void:
-	var leaf:= CylinderMesh.new()
-	leaf.top_radius = 0.0
-	leaf.bottom_radius = 0.12
-	leaf.height = 0.9
-	leaf.radial_segments = 4
-	var fronds:= 5
-	var mm:= _new_multimesh(leaf, n * fronds, true)
 	var cols:= [Color(0.12, 0.42, 0.16), Color(0.18, 0.5, 0.2), Color(0.1, 0.35, 0.18)]
+	var groups:= [[], []]
 	for i in n:
 		var p:= _rand_spot()
 		# Near trees if possible.
@@ -293,76 +428,82 @@ func _build_ferns(n: int) -> void:
 			var t: Vector2 = tree_spots[rng.randi_range(0, tree_spots.size() - 1)]
 			p = t + Vector2(rng.randf_range(-2.5, 2.5), rng.randf_range(-2.5, 2.5))
 		if _near_camp(p, 14.0) or not _dry(p, 0.3):
-			p = Vector2(9999, 9999)
-		var g:= ground(p.x, p.y)
-		var s:= rng.randf_range(0.7, 1.4)
-		var c: Color = cols[rng.randi_range(0, cols.size() - 1)]
-		for k in fronds:
-			var yaw:= TAU * k / fronds + rng.randf_range(-0.3, 0.3)
-			var b:= Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, rng.randf_range(0.7, 1.1))
-			b = b * Basis.from_scale(Vector3(s, s, s * 0.25))
-			mm.set_instance_transform(i * fronds + k, Transform3D(b, g + b * Vector3(0, 0.45, 0)))
-			mm.set_instance_color(i * fronds + k, c)
-	_add_mm(mm, _vc_mat(), "Ferns").cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			continue
+		var s:= rng.randf_range(0.8, 1.5)
+		var b:= Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.85, 1.15), s))
+		groups[rng.randi_range(0, 1)].append([Transform3D(b, ground(p.x, p.y)), cols[rng.randi_range(0, cols.size() - 1)].lightened(rng.randf_range(-0.05, 0.1))])
+	var mat:= foliage_mat(0.04, 0.8, 0.02)
+	for v in 2:
+		_add_lod("Ferns", PlantMeshes.fern_clump(v), null, mat, null, groups[v], SMALL_NEAR, false)
 
 
-## Little glowing blue mushrooms around tree roots.
+## Little glowing blue toadstools (spotted caps) around tree roots.
 func _build_mushrooms(n: int) -> void:
-	var cap:= SphereMesh.new()
-	cap.radius = 0.12
-	cap.height = 0.12
-	cap.is_hemisphere = true
-	cap.radial_segments = 8
-	cap.rings = 3
-	var stem:= CylinderMesh.new()
-	stem.top_radius = 0.03
-	stem.bottom_radius = 0.04
-	stem.height = 0.16
-	stem.radial_segments = 6
-	var mm_c:= _new_multimesh(cap, n, true)
-	var mm_s:= _new_multimesh(stem, n, true)
+	var caps: Array = []
+	var stems: Array = []
 	for i in n:
-		var p:= Vector2(9999, 9999)
-		if not tree_spots.is_empty():
-			var t: Vector2 = tree_spots[rng.randi_range(0, tree_spots.size() - 1)]
-			var a:= rng.randf() * TAU
-			p = t + Vector2(cos(a), sin(a)) * rng.randf_range(0.8, 1.6)
+		if tree_spots.is_empty():
+			break
+		var t: Vector2 = tree_spots[rng.randi_range(0, tree_spots.size() - 1)]
+		var a:= rng.randf() * TAU
+		var p:= t + Vector2(cos(a), sin(a)) * rng.randf_range(0.8, 1.6)
 		var g:= ground(p.x, p.y)
-		var s:= rng.randf_range(0.6, 1.5)
-		var b:= Basis().scaled(Vector3(s, s, s))
-		mm_s.set_instance_transform(i, Transform3D(b, g + Vector3(0, 0.08 * s, 0)))
-		mm_s.set_instance_color(i, Color(0.85, 0.85, 0.8))
-		mm_c.set_instance_transform(i, Transform3D(b, g + Vector3(0, 0.15 * s, 0)))
-		mm_c.set_instance_color(i, Color(0.3, 0.75, 1.0).lerp(Color(0.6, 0.4, 1.0), rng.randf()))
-	_add_mm(mm_s, _vc_mat(), "MushroomStems").cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# Mushrooms grow in little rings of 2-4.
+		for k in rng.randi_range(2, 4):
+			var q:= g + Vector3(rng.randf_range(-0.25, 0.25), 0, rng.randf_range(-0.25, 0.25))
+			var s:= rng.randf_range(0.7, 1.6)
+			var xf:= Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s)), q)
+			stems.append([xf, Color(0.85, 0.85, 0.8)])
+			caps.append([xf, Color(0.3, 0.75, 1.0).lerp(Color(0.6, 0.4, 1.0), rng.randf())])
+	_add_lod("MushroomStems", PlantMeshes.toadstool("stem"), null, _vc_mat(), null, stems, SMALL_NEAR, false)
 	var glow:= _vc_mat()
 	glow.emission_enabled = true
 	glow.emission = Color(0.25, 0.6, 1.0)
 	glow.emission_energy_multiplier = 1.6
-	_add_mm(mm_c, glow, "MushroomCaps").cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_add_lod("MushroomCaps", PlantMeshes.toadstool("cap"), null, glow, null, caps, SMALL_NEAR + 20.0, false)
 
 
 func _build_flowers() -> void:
-	var sphere:= SphereMesh.new()
-	sphere.radius = 0.12
-	sphere.height = 0.24
-	sphere.radial_segments = 6
-	sphere.rings = 3
-	var colors:= [Color(1, 0.2, 0.2), Color(1, 0.9, 0.1), Color(1, 0.5, 0.8), Color(1, 1, 1), Color(1, 0.55, 0.1)]
 	var n:= int(style["flowers"])
-	var mm:= _new_multimesh(sphere, n, true)
+	var kinds:= PlantMeshes.FLOWER_COLS.size()
+	var groups: Array = []
+	for k in kinds:
+		groups.append([])
 	for i in n:
 		var p:= _rand_spot()
 		for _t in 10:
 			if _dry(p, 0.2):
 				break
 			p = _rand_spot()
-		mm.set_instance_transform(i, Transform3D(Basis(), ground(p.x, p.y) + Vector3(0, 0.12, 0)))
-		mm.set_instance_color(i, colors[rng.randi_range(0, colors.size() - 1)])
-	var mat:= _vc_mat()
-	mat.emission_enabled = true
-	mat.emission = Color(0.15, 0.15, 0.15)
-	_add_mm(mm, mat, "Flowers")
+		var s:= rng.randf_range(1.15, 1.7)
+		var xf:= Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s)), ground(p.x, p.y))
+		var b:= rng.randf_range(0.9, 1.1)
+		groups[rng.randi_range(0, kinds - 1)].append([xf, Color(b, b, b)])
+	var mat:= foliage_mat(0.0, 0.5, 0.025)
+	mat.set_shader_parameter("emission", 0.12)   # a little glow so they read at night
+	for k in kinds:
+		_add_lod("Flowers", PlantMeshes.flower_clump(k), null, mat, null, groups[k], SMALL_NEAR, false)
+	_build_grass()
+
+
+## Grass tufts over the meadows and under the trees (not in water, not on the camp clearing).
+func _build_grass() -> void:
+	if terrain.is_city:
+		return
+	var n:= 28000
+	var base: Color = style["grass"]
+	var groups:= [[], []]
+	for i in n:
+		var p:= _rand_spot()
+		if not _dry(p, 0.25) or terrain.normal_at(p.x, p.y).y < 0.85:
+			continue
+		var s:= rng.randf_range(0.8, 1.5)
+		var xf:= Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.8, 1.3), s)), ground(p.x, p.y) - Vector3(0, 0.02, 0))
+		var c:= base.lightened(rng.randf_range(-0.05, 0.12)).lerp(Color(0.45, 0.5, 0.2), rng.randf() * 0.3)
+		groups[rng.randi_range(0, 1)].append([xf, c])
+	var mat:= foliage_mat(0.04, 0.5, 0.015)
+	for v in 2:
+		_add_lod("Grass", PlantMeshes.grass_tuft(v), null, mat, null, groups[v], GRASS_NEAR, false)
 
 
 ## Lakeside extras: cattails along the waterline, lily pads, and a dock.
@@ -460,41 +601,10 @@ func _build_shore() -> void:
 	_colliders.add_child(cs)
 
 
+## v0.17: the ring of lamp posts round camp is gone; camp itself is the safe zone now
+## (Terrain.SAFE_R). Kept as a no-op so older code paths still call something harmless.
 func _build_camp_fence() -> void:
-	var wood:= StandardMaterial3D.new()
-	wood.albedo_color = Color(0.55, 0.4, 0.2)
-	var light_colors:= [Color(1, 0.9, 0.2), Color(1, 0.4, 0.7), Color(0.2, 0.9, 1.0)]
-	var post_mesh:= BoxMesh.new()
-	post_mesh.size = Vector3(0.3, 1.2, 0.3)
-	var bulb_mesh:= SphereMesh.new()
-	bulb_mesh.radius = 0.1
-	bulb_mesh.height = 0.2
-	var count:= 0
-	for i in 28:
-		var ang:= float(i) / 28.0 * TAU
-		# Leave the north side open: that's where the woods are.
-		if absf(wrapf(ang - PI * 1.5, -PI, PI)) < 0.6:
-			continue
-		var p:= Terrain.CAMP + Vector2(cos(ang), sin(ang)) * 15.0
-		var g:= ground(p.x, p.y)
-		var post:= MeshInstance3D.new()
-		post.mesh = post_mesh
-		post.material_override = wood
-		post.position = g + Vector3(0, 0.6, 0)
-		add_child(post)
-		if i % 2 == 0:
-			var bulb:= MeshInstance3D.new()
-			bulb.mesh = bulb_mesh
-			var c: Color = light_colors[count % light_colors.size()]
-			count += 1
-			var lmat:= StandardMaterial3D.new()
-			lmat.albedo_color = c
-			lmat.emission_enabled = true
-			lmat.emission = c
-			lmat.emission_energy_multiplier = 2.0
-			bulb.material_override = lmat
-			bulb.position = g + Vector3(0, 1.3, 0)
-			add_child(bulb)
+	pass
 
 
 func _build_campfire() -> void:

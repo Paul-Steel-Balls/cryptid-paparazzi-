@@ -11,7 +11,9 @@ const STEP:= 2.0            # grid spacing in metres
 const CAMP:= Vector2(0, 180) # RV / spawn clearing (x, z)
 const CAMP_FLAT_R:= 16.0
 const CAMP_BLEND_R:= 34.0
-const RIM_START:= 171.0     # beyond this the land rises into a bowl wall
+const RIM_START:= 171.0
+## Camp is a safe zone (v0.17): nothing chases, grabs, flashes or beams you up within this.
+const SAFE_R:= 16.0     # beyond this the land rises into a bowl wall
 
 const LAKE_C:= Vector2(0, -15)   # Lakeside map: centre of the lake
 ## Where things can roam/spawn: a square of +-SPAN inside the rim.
@@ -155,6 +157,10 @@ func normal_at(x: float, z: float) -> Vector3:
 	var dx:= height_at(x + e, z) - height_at(x - e, z)
 	var dz:= height_at(x, z + e) - height_at(x, z - e)
 	return Vector3(-dx, 2.0 * e, -dz).normalized()
+
+
+static func in_camp(p: Vector3) -> bool:
+	return Vector2(p.x, p.z).distance_to(CAMP) < SAFE_R
 
 
 func camp_height() -> float:

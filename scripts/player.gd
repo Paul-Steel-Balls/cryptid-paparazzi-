@@ -814,7 +814,7 @@ func first_person_camera() -> Camera3D:
 
 
 ## What other players need to draw you: [position, look yaw, body yaw relative to it, pitch,
-## anim, speed, backpedal, crouching, indoors, snared, hands empty].
+## anim, speed, backpedal, crouching, indoors, snared, hands empty, camera raised].
 func net_state() -> Array:
 	var hspeed:= Vector2(velocity.x, velocity.z).length()
 	var anim:= "idle"
@@ -829,7 +829,7 @@ func net_state() -> Array:
 	elif hspeed > 0.2:
 		anim = _gait_anim(hspeed)
 	return [global_position, _yaw, _body_yaw, _pitch, anim, hspeed, _backpedal,
-		_crouch_t > 0.5, indoors, _snare_timer > 0.0, hands_empty]
+		_crouch_t > 0.5, indoors, _snare_timer > 0.0, hands_empty, aiming and not hands_empty]
 
 
 func _apply_look() -> void:
@@ -948,12 +948,24 @@ func _build_body() -> void:
 	_body = Node3D.new()
 	_body.name = "BodyModel"
 	add_child(_body)
-	_body_model = CharacterModel.load_model("res://models/photographer.glb", 0.012)
+	_load_body_model()
+	if not GameState.skin_changed.is_connected(_on_skin_changed):
+		GameState.skin_changed.connect(_on_skin_changed)
+
+
+## Your outfit (Skins): the third-person body and what others see.
+func _load_body_model() -> void:
+	if _body_model:
+		_body_model.queue_free()
+		_body_model = null
+		_head_look = null
+	var sk:= GameState.skin
+	_body_model = CharacterModel.load_model(Skins.model_path(sk), 0.012)
 	_body_model.rotation.y = PI          # model faces +Z, the player faces -Z
 	_body_model.position.y = -STAND_HEIGHT * 0.5
 	_body_model.scale = Vector3.ONE * 0.9
 	_body.add_child(_body_model)
-	attach_camera(_body_model, LAYER_BODY)
+	attach_camera(_body_model, LAYER_BODY, float(Skins.info(sk)["cam_z"]))
 	_body_model.set_layers(LAYER_BODY)
 	_body_model.play("idle")
 	if _body_model.skeleton:
@@ -961,8 +973,17 @@ func _build_body() -> void:
 		_body_model.skeleton.add_child(_head_look)
 
 
+func _on_skin_changed(_id: String) -> void:
+	if is_inside_tree() and _body != null:
+		_load_body_model()
+
+
+## Where the camera sits when held up to the eye (model space, in front of the face).
+const FACE_CAMERA:= Vector3(0, 1.655, 0.205)
+
+
 ## Hang the camera on a photographer model's chest (also used for other players' bodies).
-static func attach_camera(model: CharacterModel, layer: int = 1) -> void:
+static func attach_camera(model: CharacterModel, layer: int = 1, z: float = 0.19) -> void:
 	var ba:= model.attach("chest")
 	if ba == null:
 		return
@@ -970,9 +991,25 @@ static func attach_camera(model: CharacterModel, layer: int = 1) -> void:
 	var chest:= sk.get_bone_global_rest(sk.find_bone("chest"))
 	var cam:= CharacterModel.load_model("res://models/camera_lo.glb", 0.003)
 	cam.name = "ChestCamera"
-	cam.position = chest.affine_inverse() * Vector3(0, 1.225, 0.19)
+	cam.position = chest.affine_inverse() * Vector3(0, 1.225, z)
 	ba.add_child(cam)
 	cam.set_layers(layer)
+
+
+## The camera held up to the eye (other players see this while you're aiming).
+static func attach_face_camera(model: CharacterModel, layer: int = 1, z: float = FACE_CAMERA.z) -> Node3D:
+	var ba:= model.attach("head")
+	if ba == null:
+		return null
+	ba.name = "FaceCamAttach"
+	var sk:= model.skeleton
+	var head:= sk.get_bone_global_rest(sk.find_bone("head"))
+	var cam:= CharacterModel.load_model("res://models/camera_lo.glb", 0.003)
+	cam.name = "FaceCamera"
+	cam.position = head.affine_inverse() * Vector3(FACE_CAMERA.x, FACE_CAMERA.y, z)
+	ba.add_child(cam)
+	cam.set_layers(layer)
+	return cam
 
 
 ## Online: a cap in the player's colour (over the sculpted red one) so you can tell people apart.

@@ -23,6 +23,7 @@ var hotspots:= {
 	"develop": {"pos": Vector3(-0.55, 1.05, 0.85 + DZ), "label": "Darkroom — develop film"},
 	"exit": {"pos": Vector3(0.6, 1.1, -1.15 - DZ), "label": "Leave the RV"},
 	"posters": {"pos": Vector3(-1.9, 1.55, -1.15 - DZ), "label": "Poster wall — rearrange"},
+	"closet": {"pos": Vector3(1.85, 1.2, -HALF_W + 0.62), "label": "Closet — change outfit"},
 }
 ## Where the six posters hang: [local position, facing yaw]. Four along the kitchen wall, two over the bed.
 const POSTER_SLOTS:= [
@@ -163,7 +164,7 @@ var _road_scroll:= false
 
 func seat_driver() -> void:
 	if _driver == null:
-		_driver = CharacterModel.load_model("res://models/photographer.glb", 0.012)
+		_driver = CharacterModel.load_model(Skins.model_path(GameState.skin), 0.012)
 		_driver.scale = Vector3.ONE * 0.9
 		_driver.position = Vector3(2.6 + DX, 0.04, -0.45)
 		_driver.rotation.y = PI / 2
@@ -412,6 +413,16 @@ func _build_props() -> void:
 	_box(Vector3(1.52, 0.04, 0.58), Vector3(-1.1, 0.94, -HALF_W + 0.28), _mat(Color(0.85, 0.82, 0.7), 0.4), false)
 	_box(Vector3(0.4, 0.04, 0.3), Vector3(-1.05, 0.97, -HALF_W + 0.28), _mat(Color(0.15, 0.15, 0.15), 0.4), false)
 	_box(Vector3(0.12, 0.18, 0.12), Vector3(-1.5, 1.05, -HALF_W + 0.3), _mat(Color(0.2, 0.2, 0.22), 0.3), false)
+	# A tall closet between the door and the cab (outfits from DRIP CITY live in here).
+	var cw:= _mat(Color(0.62, 0.45, 0.28))
+	_box(Vector3(1.0, 2.0, 0.55), Vector3(1.85, 1.0, -HALF_W + 0.28), cw)
+	for sx: float in [-0.245, 0.245]:
+		_box(Vector3(0.47, 1.85, 0.03), Vector3(1.85 + sx, 1.0, -HALF_W + 0.565), _mat(Color(0.7, 0.52, 0.33)), false)
+		_box(Vector3(0.03, 0.18, 0.04), Vector3(1.85 + sx * 0.15, 1.05, -HALF_W + 0.6), _mat(Color(0.85, 0.75, 0.4), 0.3), false)
+	_box(Vector3(0.3, 1.2, 0.01), Vector3(1.85 + 0.245, 1.15, -HALF_W + 0.585), _mat(Color(0.75, 0.82, 0.88), 0.05), false)   # mirror
+	# a feather boa hanging off the closet door, because of course
+	for k in 6:
+		_box(Vector3(0.09, 0.09, 0.09), Vector3(1.85 - 0.2 + sin(k * 0.9) * 0.05, 1.9 - k * 0.14, -HALF_W + 0.63), _mat(Color(1.0, 0.35, 0.75), 0.9), false)
 	# the cab is narrower than the coach: dark side panels fill in either side of the dash
 	for side: float in [-1.0, 1.0]:
 		_box(Vector3(0.9, 1.0, DZ + 0.05), Vector3(HALF_L - 0.45, 0.5, side * (HALF_W - (DZ + 0.05) * 0.5)), _mat(Color(0.15, 0.15, 0.17)))

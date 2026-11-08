@@ -58,6 +58,7 @@ func _process(delta: float) -> void:
 		_t_player = 1.0 / PLAYER_HZ
 		_send_my_state()
 	if Net.is_host():
+		_vote_tick(delta)
 		_t_cryptid -= delta
 		if _t_cryptid <= 0.0:
 			_t_cryptid = 1.0 / CRYPTID_HZ
@@ -88,9 +89,9 @@ func _send_my_state() -> void:
 ## Client -> host: my player. The host draws it and passes it on.
 @rpc("any_peer", "unreliable_ordered")
 func _client_state(st: Array, watching: Array) -> void:
-	if not Net.is_host():
-		return
-	var id:= multiplayer.get_remote_sender_id()
+	if not Net.is_host() or not is_inside_tree():
+		return   # (a late packet while the map reloads)
+	var id:= Net.multiplayer.get_remote_sender_id()
 	_apply_player(id, st)
 	var cs:= _cryptids()
 	for i in watching:
@@ -132,6 +133,9 @@ func _on_players_changed() -> void:
 func _on_peer_left(id: int) -> void:
 	_ready_peers.erase(id)
 	_drop_remote(id)
+	# Someone left mid-vote: the rest may now all have agreed.
+	if Net.is_host() and not _vote.is_empty():
+		_host_check_vote.call_deferred()
 
 
 func _drop_remote(id: int) -> void:
@@ -163,7 +167,7 @@ func send_voice(data: PackedByteArray) -> void:
 func _voice_up(data: PackedByteArray) -> void:
 	if not Net.is_host() or data.size() > 4096:
 		return
-	var id:= multiplayer.get_remote_sender_id()
+	var id:= Net.multiplayer.get_remote_sender_id()
 	var rp = remotes.get(id)
 	if rp != null and is_instance_valid(rp):
 		rp.play_voice(data)
@@ -257,7 +261,7 @@ func _pick_targets() -> void:
 func _request_world() -> void:
 	if not Net.is_host():
 		return
-	var id:= multiplayer.get_remote_sender_id()
+	var id:= Net.multiplayer.get_remote_sender_id()
 	var roster: Array = []
 	for c in _cryptids():
 		roster.append([c.species_id, c.global_position])
@@ -304,7 +308,7 @@ func _cryptid_call(index: int, method: String, args: Array) -> void:
 	if method not in ["hear_noise", "on_flash", "on_device_flash", "photographed_first"]:
 		return
 	var c: Cryptid = cs[index]
-	var rp = remotes.get(multiplayer.get_remote_sender_id())
+	var rp = remotes.get(Net.multiplayer.get_remote_sender_id())
 	# Whoever flashed/made noise is who it reacts to.
 	if rp != null and method != "photographed_first" and c.state != Cryptid.State.CHASE:
 		c.player_ref = rp
@@ -444,14 +448,14 @@ func share_tripod(t: Tripod) -> int:
 
 @rpc("any_peer", "reliable")
 func _tripod_up(id: int, xf: Transform3D) -> void:
-	var from:= multiplayer.get_remote_sender_id()
+	var from:= Net.multiplayer.get_remote_sender_id()
 	_tripod_in(from, id, xf)
 	_fanout("_tripod_in", [from, id, xf], from)
 
 
 @rpc("any_peer", "reliable")
 func _tripod_fire_up(id: int) -> void:
-	var from:= multiplayer.get_remote_sender_id()
+	var from:= Net.multiplayer.get_remote_sender_id()
 	_tripod_shot(from, id)
 	_fanout("_tripod_shot", [from, id], from)
 
@@ -495,14 +499,14 @@ func ufo_gone() -> void:
 
 @rpc("any_peer", "unreliable_ordered")
 func _ufo_up(st: Array) -> void:
-	var from:= multiplayer.get_remote_sender_id()
+	var from:= Net.multiplayer.get_remote_sender_id()
 	_ufo_in(from, st)
 	_fanout("_ufo_in", [from, st], from)
 
 
 @rpc("any_peer", "reliable")
 func _ufo_gone_up() -> void:
-	var from:= multiplayer.get_remote_sender_id()
+	var from:= Net.multiplayer.get_remote_sender_id()
 	_ufo_gone_in(from)
 	_fanout("_ufo_gone_in", [from], from)
 
@@ -567,7 +571,7 @@ func request_gold() -> void:
 func _gold_req() -> void:
 	if not Net.is_host():
 		return
-	var id:= multiplayer.get_remote_sender_id()
+	var id:= Net.multiplayer.get_remote_sender_id()
 	var ok: bool = main.host_take_gold(remotes.get(id))
 	_gold_reply.rpc_id(id, ok)
 
@@ -630,3 +634,142 @@ func night_over(map_id: String, night: int, how: String) -> void:
 @rpc("authority", "reliable")
 func _night_over(map_id: String, night: int, how: String) -> void:
 	main.follow_host(map_id, night, how)
+
+
+# ------------------------------------------------------------------ lobby votes (sleep / drive on)
+## Like Minecraft beds: nobody sleeps or drives off unless everyone in the lobby agrees.
+## Anyone can ask; the host keeps the count and, once every player has said yes, does it
+## (everyone else follows as before). One "no" or 45 s without everyone answering calls it off.
+
+const VOTE_TIME:= 45.0
+var _vote: Dictionary = {}        # host: {kind, map, starter, yes: {id: true}, t}
+var _shown_vote: Dictionary = {}  # everyone: {kind, map, starter, yes, need}
+var _my_vote_done:= false
+
+
+func vote_running() -> bool:
+	return not _shown_vote.is_empty()
+
+
+## The local player wants to sleep ("sleep") or drive to map_id ("travel").
+func start_vote(kind: String, map_id: String) -> void:
+	if Net.is_host():
+		_host_open_vote(Net.my_id(), kind, map_id)
+	else:
+		_vote_request.rpc_id(1, kind, map_id)
+
+
+@rpc("any_peer", "reliable")
+func _vote_request(kind: String, map_id: String) -> void:
+	if Net.is_host():
+		_host_open_vote(Net.multiplayer.get_remote_sender_id(), kind, map_id)
+
+
+func _host_open_vote(starter: int, kind: String, map_id: String) -> void:
+	if not _vote.is_empty():
+		_vote_note_to(starter, "There's already a vote going. Press Y or N.")
+		return
+	_vote = {"kind": kind, "map": map_id, "starter": starter, "yes": {starter: true}, "t": VOTE_TIME}
+	_host_check_vote()
+
+
+## Local answer (Y / N).
+func answer_vote(yes: bool) -> void:
+	if not vote_running() or _my_vote_done:
+		return
+	_my_vote_done = true
+	if Net.is_host():
+		_host_answer(Net.my_id(), yes)
+	else:
+		_vote_answer.rpc_id(1, yes)
+
+
+@rpc("any_peer", "reliable")
+func _vote_answer(yes: bool) -> void:
+	if Net.is_host():
+		_host_answer(Net.multiplayer.get_remote_sender_id(), yes)
+
+
+func _host_answer(id: int, yes: bool) -> void:
+	if _vote.is_empty():
+		return
+	if not yes:
+		_host_close_vote(false, "%s said no. Staying put." % Net.name_of(id))
+		return
+	_vote["yes"][id] = true
+	_host_check_vote()
+
+
+func _host_check_vote() -> void:
+	var need:= Net.players.keys() if not Net.players.is_empty() else [Net.my_id()]
+	var yes: Dictionary = _vote["yes"]
+	for id in yes.keys():
+		if id not in need:
+			yes.erase(id)
+	var n_yes:= yes.size()
+	if n_yes >= need.size():
+		var kind: String = _vote["kind"]
+		var map_id: String = _vote["map"]
+		_host_close_vote(true, "Everyone's in: %s" % ("lights out..." if kind == "sleep" else "driving on to %s..." % Species.MAPS[map_id]["name"]))
+		if main.has_method("vote_passed"):
+			main.vote_passed(kind, map_id)
+		return
+	_send_vote_state()
+
+
+func _send_vote_state() -> void:
+	var need:= Net.players.keys() if not Net.players.is_empty() else [Net.my_id()]
+	var args:= [int(_vote["starter"]), str(_vote["kind"]), str(_vote["map"]), (_vote["yes"] as Dictionary).keys(), need.size()]
+	for p in _ready_peers:
+		_vote_state.rpc_id(p, args[0], args[1], args[2], args[3], args[4])
+	_vote_state(args[0], args[1], args[2], args[3], args[4])
+
+
+func _host_close_vote(passed: bool, msg: String) -> void:
+	_vote.clear()
+	for p in _ready_peers:
+		_vote_closed.rpc_id(p, passed, msg)
+	_vote_closed(passed, msg)
+
+
+func _vote_note_to(id: int, msg: String) -> void:
+	if id == Net.my_id():
+		_vote_note(msg)
+	else:
+		_vote_note.rpc_id(id, msg)
+
+
+@rpc("authority", "reliable")
+func _vote_note(msg: String) -> void:
+	if main.has_method("vote_message"):
+		main.vote_message(msg)
+
+
+@rpc("authority", "reliable")
+func _vote_state(starter: int, kind: String, map_id: String, yes: Array, need: int) -> void:
+	if _shown_vote.is_empty():
+		_my_vote_done = false
+	_shown_vote = {"kind": kind, "map": map_id, "starter": starter, "yes": yes, "need": need}
+	if Net.my_id() in yes:
+		_my_vote_done = true
+	if main.has_method("show_vote"):
+		main.show_vote(_shown_vote, _my_vote_done)
+
+
+@rpc("authority", "reliable")
+func _vote_closed(passed: bool, msg: String) -> void:
+	_shown_vote.clear()
+	_my_vote_done = false
+	if main.has_method("vote_closed"):
+		main.vote_closed(passed, msg)
+
+
+func _vote_tick(delta: float) -> void:
+	if _vote.is_empty():
+		return
+	var before:= float(_vote["t"])
+	_vote["t"] = before - delta
+	if float(_vote["t"]) <= 0.0:
+		_host_close_vote(false, "Not everyone answered. Staying put.")
+	elif int(before) != int(float(_vote["t"])):
+		_send_vote_state()   # once a second, so anyone who just finished loading sees it too

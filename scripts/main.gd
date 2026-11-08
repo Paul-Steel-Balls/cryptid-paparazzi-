@@ -21,6 +21,7 @@ var _shop_ui: ShopUI
 var _files: CryptidFiles
 var _travel: TravelPanel
 var _poster_wall: PosterWallUI
+var _wardrobe: WardrobeUI
 var _forest: Forest
 var _terrain: Terrain
 var _toe: Node3D
@@ -95,7 +96,8 @@ func _ready() -> void:
 	_player.terrain = _terrain
 	_player.water_level = _terrain.water_level
 	_player.map_limit = Terrain.RIM_START + 18.0
-	_player.position = Vector3(camp.x, camp_y + Player.EYE_HEIGHT + 0.3, camp.y - 3.0)
+	var spawn:= camp + spawn_offset()
+	_player.position = Vector3(spawn.x, _terrain.height_at(spawn.x, spawn.y) + Player.EYE_HEIGHT + 0.3, spawn.y)
 	add_child(_player)
 
 	_spawn_cryptids()
@@ -122,6 +124,8 @@ func _ready() -> void:
 	add_child(_shop_ui)
 	_travel = TravelPanel.new()
 	add_child(_travel)
+	_wardrobe = WardrobeUI.new()
+	add_child(_wardrobe)
 	_poster_wall = PosterWallUI.new()
 	add_child(_poster_wall)
 	_pause = PauseMenu.new()
@@ -159,8 +163,10 @@ func _ready() -> void:
 	_shop_ui.buy_pressed.connect(_on_buy)
 	_travel.closed.connect(_close_ui)
 	_poster_wall.closed.connect(_close_ui)
+	_wardrobe.closed.connect(_close_ui)
+	GameState.skin_changed.connect(_on_skin_changed)
 	_poster_wall.changed.connect(func(): _interior.refresh_decor())
-	_travel.chosen.connect(_on_travel)
+	_travel.chosen.connect(_on_travel_chosen)
 	_pause.resumed.connect(func(): _interact_cool = 0.2)
 	_pause.settings_changed.connect(_apply_quality)
 	_pause.files_pressed.connect(func():
@@ -223,6 +229,17 @@ func _spawn_shop() -> void:
 	add_child(_shop)
 	_shop.global_position = Vector3(p.x, _terrain.height_at(p.x, p.y), p.y)
 	_shop.rotation.y = PI + 0.35   # counter faces the campfire
+
+
+## Where you appear at camp: online, everyone gets their own spot round the front of the RV.
+static func spawn_offset() -> Vector2:
+	var spots:= [Vector2(0, -3), Vector2(-2.6, -3.6), Vector2(2.6, -3.6), Vector2(0, -6.2)]
+	if not Net.online():
+		return spots[0]
+	var ids:= Net.players.keys()
+	ids.sort()
+	var i:= maxi(0, ids.find(Net.my_id()))
+	return spots[i % spots.size()]
 
 
 func _spawn_props() -> void:
@@ -611,7 +628,7 @@ func _focus() -> Cryptid:
 
 
 func _ui_open() -> bool:
-	return _poster.is_open() or _shop_ui.is_open() or _travel.is_open() or _pause.is_open() or _files.is_open() or _poster_wall.is_open() or _mp_panel.is_open()
+	return _poster.is_open() or _shop_ui.is_open() or _travel.is_open() or _pause.is_open() or _files.is_open() or _poster_wall.is_open() or _mp_panel.is_open() or _wardrobe.is_open()
 
 
 ## What E would do right now: "toe", "shop", "rv", "drive", "sleep", "develop", "exit" or "".
@@ -629,6 +646,10 @@ func _interaction() -> String:
 		return "shop"
 	if _rv.player_in_zone:
 		return "rv"
+	if _city != null and _city.landmarks.has("boutique"):
+		var door: Vector2 = _city.landmarks["boutique"]
+		if Vector2(_player.global_position.x, _player.global_position.z).distance_to(door) < 2.6:
+			return "boutique"
 	return ""
 
 
@@ -654,7 +675,8 @@ func _process(delta: float) -> void:
 	_hud.set_clock(is_day, maxf(0.0, NIGHT_LENGTH - _night_time))
 	_update_effects()
 	var act:= _interaction()
-	var labels:= {"toe": "Talk to Toe Rogan", "shop": "Bait & trap stand", "rv": "Enter the RV", "gold": "Grab the pot of gold"}
+	var labels:= {"toe": "Talk to Toe Rogan", "shop": "Bait & trap stand", "rv": "Enter the RV", "gold": "Grab the pot of gold",
+		"boutique": "DRIP CITY — try on outfits"}
 	if act == "":
 		_hud.show_interact_prompt(false)
 	elif labels.has(act):
@@ -665,10 +687,19 @@ func _process(delta: float) -> void:
 	if _player.indoors:
 		_hud.set_compass(_player.global_position, _player._yaw, [])
 	else:
-		_hud.set_compass(_player.global_position, _player._yaw, [
+		var marks: Array = [
 			{"pos": _rv.global_position, "label": "RV", "color": Color(0.45, 0.95, 1.0), "icon": "rv"},
 			{"pos": _toe.global_position, "label": "TOE", "color": Color(1.0, 0.65, 0.3)},
-		])
+		]
+		# The rest of the crew, in their cap colours (inside the RV = at the RV).
+		if _net != null:
+			for id in _net.remotes:
+				var rp: RemotePlayer = _net.remotes[id]
+				if is_instance_valid(rp):
+					marks.append({"pos": _rv.global_position if rp.indoors else rp.global_position,
+						"label": Net.name_of(id).to_upper(), "color": Net.color_of(id).lerp(Color.WHITE, 0.25), "icon": "player"})
+		_hud.set_compass(_player.global_position, _player._yaw, marks)
+	_hud.set_safe(not _player.indoors and Terrain.in_camp(_player.global_position) and not _cutscene)
 	_hud.set_flash_charge(_player.flash_ready_fraction())
 	_hud.set_struggle(_ufo.struggle if _ufo != null and is_instance_valid(_ufo) and _ufo.is_beaming() else -1.0)
 	if _ufo != null and is_instance_valid(_ufo) and Net.online():
@@ -743,6 +774,15 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _net != null and _net.vote_running():
+		if event.is_action_pressed("vote_yes"):
+			_net.answer_vote(true)
+			get_viewport().set_input_as_handled()
+			return
+		if event.is_action_pressed("vote_no"):
+			_net.answer_vote(false)
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed("ui_cancel") and not _ui_open() and not GameState.game_over and not _ending:
 		_player.set_aiming(false)
 		_pause.open()
@@ -951,20 +991,23 @@ func _on_interact() -> void:
 		"exit":
 			_exit_rv()
 		"sleep", "bunk":
-			if Net.is_client():
-				_hud.show_message("Only the host (%s) can call it a night." % Net.name_of(1))
+			if Net.online():
+				_ask_everyone("sleep", "")
 			else:
 				_sleep()
 		"drive":
-			if Net.is_client():
-				_hud.show_message("Only the host (%s) can drive." % Net.name_of(1))
-			else:
-				_open_travel()
+			_open_travel()
 		"develop":
 			_develop()
 		"posters":
 			_open_ui()
 			_poster_wall.open()
+		"boutique":
+			_open_ui()
+			_wardrobe.open(true)
+		"closet":
+			_open_ui()
+			_wardrobe.open(false)
 
 
 ## Pause the world for a menu.
@@ -1144,6 +1187,67 @@ func _sleep() -> void:
 	if Net.is_host():
 		_net.night_over(GameState.current_map, GameState.night, "sleep")
 	_reload()
+
+
+func _on_travel_chosen(map_id: String) -> void:
+	if not Net.online():
+		_on_travel(map_id)
+		return
+	_travel.visible = false
+	_close_ui()
+	_ask_everyone("travel", map_id)
+
+
+# ------------------------------------------------------------------ lobby votes (online)
+
+func _ask_everyone(kind: String, map_id: String) -> void:
+	if _net.vote_running():
+		_hud.show_message("There's already a vote going. Press %s or %s." % [_key_name("vote_yes"), _key_name("vote_no")])
+		return
+	_interact_cool = 1.0
+	_net.start_vote(kind, map_id)
+
+
+func _key_name(action: String) -> String:
+	var b:= GameState.bindings_of(action)
+	return GameState.binding_name(b[0]) if not b.is_empty() else "?"
+
+
+## NetSync: the vote box for everyone (who asked, what for, who's said yes).
+func show_vote(v: Dictionary, done: bool) -> void:
+	var who:= "You" if int(v["starter"]) == Net.my_id() else Net.name_of(int(v["starter"]))
+	var want:= "call it a night" if v["kind"] == "sleep" else "drive on to %s" % Species.MAPS[str(v["map"])]["name"]
+	var head:= "%s %s %s." % [who, "want to" if who == "You" else "wants to", want]
+	var count:= "%d of %d agreed" % [(v["yes"] as Array).size(), int(v["need"])]
+	if done:
+		_hud.set_vote("%s\nWaiting for everyone else...  (%s)" % [head, count])
+	else:
+		_hud.set_vote("%s\n[%s] Yes      [%s] No      (%s)" % [head, _key_name("vote_yes"), _key_name("vote_no"), count])
+
+
+func vote_closed(passed: bool, msg: String) -> void:
+	_hud.set_vote("")
+	_hud.show_message(msg)
+	if passed:
+		Audio.play("ui_click", -4.0)
+
+
+func vote_message(msg: String) -> void:
+	_hud.show_message(msg)
+
+
+## Host: everyone said yes. Do it (the others follow, as when the host does it alone).
+func vote_passed(kind: String, map_id: String) -> void:
+	if _ending:
+		return
+	if _ui_open():
+		for panel in [_poster, _shop_ui, _travel, _pause, _files, _poster_wall, _mp_panel, _wardrobe]:
+			panel.set("visible", false)
+		_close_ui()
+	if kind == "sleep":
+		_sleep()
+	elif kind == "travel" and Species.MAPS.has(map_id):
+		_on_travel(map_id)
 
 
 func _open_travel() -> void:
@@ -1798,11 +1902,16 @@ func _on_left_game(reason: String) -> void:
 		get_tree().reload_current_scene()
 
 
+func _on_skin_changed(_id: String) -> void:
+	_update_net_label.call_deferred()   # team cap only goes on the classic outfit
+	_hud.update_stats()
+
+
 func _update_net_label() -> void:
 	if _hud == null:
 		return
 	var body:= _player.get("_body_model") as CharacterModel
-	if body and Net.online() and Net.players.has(Net.my_id()):
+	if body and Net.online() and Net.players.has(Net.my_id()) and Skins.has_cap(GameState.skin):
 		Player.set_cap_color(body, Net.color_of(Net.my_id()))
 		var cap:= body.find_child("TeamCap", true, false)
 		if cap:

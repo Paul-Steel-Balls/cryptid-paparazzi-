@@ -43,6 +43,10 @@ var arrival:= ""
 var cameras_thrown:= 0
 ## Posters and trinkets bought at the stand (see Catalog), and what hangs on the RV's poster wall.
 var owned_items: Array = ["poster_believe"]
+## Outfits (Skins): what you own and what you're wearing.
+var owned_skins: Array = ["default"]
+var skin:= "default"
+signal skin_changed(id: String)
 var poster_slots: Array = ["poster_believe", "", "", "", "", ""]
 
 ## Survives restarts: the player's chosen camera view.
@@ -153,6 +157,8 @@ func reset() -> void:
 	photo_images.clear()
 	cameras_thrown = 0
 	owned_items = ["poster_believe"]
+	owned_skins = ["default"]
+	skin = "default"
 	poster_slots = ["poster_believe", "", "", "", "", ""]
 	start_night()
 
@@ -287,13 +293,34 @@ func buy_decor(id: String) -> bool:
 	return true
 
 
+## DRIP CITY: false if broke or already owned.
+func buy_skin(id: String) -> bool:
+	if not Skins.CATALOG.has(id) or id in owned_skins:
+		return false
+	var price:= int(Skins.info(id)["price"])
+	if money < price:
+		return false
+	money -= price
+	owned_skins.append(id)
+	save_game()
+	return true
+
+
+func wear_skin(id: String) -> void:
+	if not id in owned_skins or id == skin:
+		return
+	skin = id
+	save_game()
+	skin_changed.emit(id)
+
+
 func save_game() -> void:
 	if not saving_enabled:
 		return
 	var data:= {"money": money, "bait": bait, "traps": traps, "tripods": tripods, "joints": joints, "beers": beers, "current_map": current_map,
 		"unlocked_maps": unlocked_maps, "night": night, "album": album, "file_scores": file_scores, "third_person": third_person,
 		"unsold_photos": unsold_photos, "cameras_thrown": cameras_thrown,
-		"owned_items": owned_items, "poster_slots": poster_slots}
+		"owned_items": owned_items, "poster_slots": poster_slots, "owned_skins": owned_skins, "skin": skin}
 	var f:= FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(data))
@@ -325,6 +352,12 @@ func load_game() -> void:
 	unsold_photos = data.get("unsold_photos", [])
 	cameras_thrown = int(data.get("cameras_thrown", 0))
 	owned_items = data.get("owned_items", ["poster_believe"])
+	owned_skins = data.get("owned_skins", ["default"])
+	if not "default" in owned_skins:
+		owned_skins.append("default")
+	skin = str(data.get("skin", "default"))
+	if not Skins.CATALOG.has(skin) or not skin in owned_skins:
+		skin = "default"
 	poster_slots = data.get("poster_slots", ["poster_believe", "", "", "", "", ""])
 	while poster_slots.size() < 6:
 		poster_slots.append("")
@@ -363,6 +396,8 @@ const CONTROLS:= [
 	["select_beer", "Item: beer", [KEY_5]],
 	["toggle_view", "First / third person", [KEY_V]],
 	["voice_ptt", "Push to talk (online)", [KEY_T]],
+	["vote_yes", "Agree to sleep / drive on (online)", [KEY_Y]],
+	["vote_no", "Say no to sleeping / driving on (online)", [KEY_N]],
 	["restart", "Restart after getting caught", [KEY_R]],
 ]
 

@@ -1,7 +1,7 @@
 extends CanvasLayer
 class_name HUD
 ## In-game overlay. Top-left: night, night timer, money (green), undeveloped film value (yellow).
-## Top-centre: compass strip with the RV marker. Bottom-right: bait/trap selector.
+## Top-centre: compass strip with the RV, Toe and the other players. Bottom-right: bait/trap selector.
 ## Raising the camera shows a viewfinder with film count and flash charge.
 
 signal try_again_pressed
@@ -33,6 +33,9 @@ var _struggle_bar: ColorRect
 var _struggle_label: Label
 var _mic_label: Label
 var _net_label: Label
+var _safe_label: Label
+var _vote_panel: PanelContainer
+var _vote_label: Label
 var _prompt: PanelContainer
 var _prompt_label: Label
 var _flash_rect: ColorRect
@@ -172,6 +175,35 @@ func _ready() -> void:
 	_net_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_net_label.visible = false
 	_root.add_child(_net_label)
+
+	# Camp is a safe zone: a small green tag under the compass while you're in it.
+	_safe_label = _label(17, Color(0.55, 1.0, 0.6))
+	_outline(_safe_label, 4)
+	_place(_safe_label, 0.5, 0.0, 0.5, 0.0, -120, 126, 120, 148)
+	_safe_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_safe_label.text = "SAFE AT CAMP"
+	_safe_label.visible = false
+	_root.add_child(_safe_label)
+
+	# Online: "Ian wants to call it a night. [Y] yes / [N] no" (everyone has to agree).
+	_vote_panel = PanelContainer.new()
+	var vs:= StyleBoxFlat.new()
+	vs.bg_color = Color(0.05, 0.04, 0.09, 0.85)
+	vs.border_color = Color(0.5, 0.9, 1.0, 0.95)
+	vs.set_border_width_all(2)
+	vs.set_corner_radius_all(8)
+	vs.content_margin_left = 18
+	vs.content_margin_right = 18
+	vs.content_margin_top = 10
+	vs.content_margin_bottom = 10
+	_vote_panel.add_theme_stylebox_override("panel", vs)
+	_place(_vote_panel, 0.5, 0.0, 0.5, 0.0, -330, 340, 330, 430)
+	_vote_label = _label(22, Color(1, 1, 1))
+	_vote_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_vote_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_vote_panel.add_child(_vote_label)
+	_vote_panel.visible = false
+	_root.add_child(_vote_panel)
 
 	_prompt = PanelContainer.new()
 	var ps:= StyleBoxFlat.new()
@@ -420,6 +452,20 @@ func set_struggle(v: float) -> void:
 		_struggle_label.modulate = Color(1, 1, 1, pulse)
 
 
+func set_safe(on: bool) -> void:
+	_safe_label.visible = on
+
+
+## The lobby vote box ("" hides it).
+func set_vote(text: String) -> void:
+	_vote_panel.visible = text != ""
+	_vote_label.text = text
+
+
+func vote_text() -> String:
+	return _vote_label.text if _vote_panel.visible else ""
+
+
 func set_net_status(t: String) -> void:
 	_net_label.visible = t != ""
 	_net_label.text = t
@@ -627,6 +673,11 @@ class Compass extends Control:
 			draw_rect(Rect2(p + Vector2(-6, -4), Vector2(5, 4)), Color(0.05, 0.05, 0.1))
 			draw_circle(p + Vector2(-5, 5), 2.6, Color(0.05, 0.05, 0.08))
 			draw_circle(p + Vector2(6, 5), 2.6, Color(0.05, 0.05, 0.08))
+		elif icon == "player":
+			# A little person: head and shoulders, outlined so it reads on the strip.
+			draw_circle(p + Vector2(0, -4), 5.5, Color(0.05, 0.05, 0.08))
+			draw_circle(p + Vector2(0, -4), 4.0, c)
+			draw_colored_polygon(PackedVector2Array([p + Vector2(-8, 9), p + Vector2(-6, 2), p + Vector2(6, 2), p + Vector2(8, 9)]), c)
 		else:
 			draw_circle(p, 6, c)
 			draw_circle(p, 3, Color(0.05, 0.05, 0.08))

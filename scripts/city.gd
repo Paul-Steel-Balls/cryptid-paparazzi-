@@ -153,7 +153,7 @@ func _plan() -> void:
 	# Rows, camp side (south) to river side: [z0, z1, [block type per column]]
 	var rows:= [
 		[EW_ROADS[0] + sh, SOUTH_WALL, ["mid", "row", "mid_camp", "mid_camp", "row", "mid"]],
-		[EW_ROADS[1] + sh, EW_ROADS[0] - sh, ["brick", "police", "playground", "brick", "lot", "garage"]],
+		[EW_ROADS[1] + sh, EW_ROADS[0] - sh, ["brick", "police", "playground", "boutique", "lot", "garage"]],
 		[EW_ROADS[2] + sh, EW_ROADS[1] - sh, ["towers", "brick", "hospital", "park", "scaffold", "towers"]],
 		[EW_ROADS[3] + sh, EW_ROADS[2] - sh, ["mid", "brick", "tailgate_lot", "cityhall", "towers", "brick"]],
 		[OVERPASS_Z + OVERPASS_HALF, EW_ROADS[3] - sh, ["mid", "brick", "mid", "mid", "brick", "mid"]],
@@ -403,6 +403,8 @@ func _ready() -> void:
 				_build_hospital(r)
 			"cityhall":
 				_build_city_hall(r)
+			"boutique":
+				_build_boutique(r)
 			"scaffold":
 				_build_buildings(r, 12.0, 20.0, 3, "brick", true)
 	_build_river()
@@ -952,6 +954,72 @@ func _named_sign(text: String, f: Dictionary, u: float, y: float, col: Color, si
 	var n: Vector3 = f["n"]
 	var l:= _sign(text, f["o"] + t * u + Vector3.UP * y + n * 0.16, size, col, self)
 	l.rotation.y = atan2(n.x, n.z)
+
+
+## DRIP CITY: the costume shop on the camp road. Pink front, neon sign, striped awning, and a
+## glass display case with mannequins in the loudest outfits. landmarks["boutique"] is the door.
+const MANNEQUINS:= ["banana", "trex", "pirate", "disco"]
+
+
+func _build_boutique(block: Rect2) -> void:
+	var r:= block.grow(-0.8)
+	var front:= Rect2(r.position.x, r.end.y - 13.0, r.size.x, 13.0)
+	_building(Rect2(r.position.x, r.position.y, r.size.x, r.size.y - 13.0), 19.0, "brick")
+	_building(front, 9.5, "colour", Color(0.95, 0.52, 0.74), false)
+	var f:= {"o": Vector3(front.position.x, 0, front.end.y + 0.02), "t": Vector3(1, 0, 0), "n": Vector3(0, 0, 1), "len": front.size.x}
+	var u_door:= front.size.x * 0.32
+	# Neon sign board and the name in lights.
+	_fbox(f, Vector3(16.0, 2.0, 0.18), Vector3(front.size.x * 0.5, 7.0, 0.1), Color(0.12, 0.05, 0.14))
+	var neon:= _sign("DRIP CITY", f["o"] + Vector3(front.size.x * 0.5, 7.25, 0.24), 340, Color(1.0, 0.45, 0.85), self)
+	neon.outline_modulate = Color(0.45, 0.05, 0.3)
+	neon.outline_size = 18
+	var sub:= _sign("COSTUMES  ·  FORMALWEAR  ·  REGRETS", f["o"] + Vector3(front.size.x * 0.5, 6.35, 0.24), 90, Color(0.6, 1.0, 0.95), self)
+	sub.outline_size = 6
+	var glow:= OmniLight3D.new()
+	glow.light_color = Color(1.0, 0.45, 0.85)
+	glow.light_energy = 2.5
+	glow.omni_range = 12.0
+	glow.position = f["o"] + Vector3(front.size.x * 0.5, 6.5, 2.0)
+	add_child(glow)
+	# Striped awning over the door and a neon OPEN in the window.
+	_awning(f, u_door, 6.0, Color(1.0, 0.4, 0.75))
+	_fbox(f, Vector3(1.6, 2.5, 0.08), Vector3(u_door, 1.25, 0.05), Color(0.1, 0.06, 0.1))
+	_fbox(f, Vector3(0.06, 0.4, 0.1), Vector3(u_door + 0.55, 1.15, 0.1), Color(0.9, 0.75, 0.3), "chrome")
+	var open_sign:= _sign("OPEN", f["o"] + Vector3(u_door - 2.2, 2.4, 0.12), 110, Color(0.4, 1.0, 0.5), self)
+	open_sign.outline_modulate = Color(0.05, 0.3, 0.1)
+	landmarks["boutique"] = Vector2(f["o"].x + u_door, front.end.y + 1.6)
+	# The display case: glass box out on the sidewalk edge, plinths, mannequins in outfits.
+	var case_u:= front.size.x * 0.68
+	var case_w:= 7.4
+	var glass:= _mat(Color(0.7, 0.85, 0.95, 0.18), 0.05)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var cz:= front.end.y + 0.62
+	var cx:= front.position.x + case_u
+	_box(Vector3(case_w, 2.6, 0.04), Vector3(cx, 1.5, cz + 0.6), glass)
+	for sx: float in [-1.0, 1.0]:
+		_box(Vector3(0.04, 2.6, 1.2), Vector3(cx + sx * case_w * 0.5, 1.5, cz), glass)
+	_bx(Vector3(case_w + 0.1, 0.2, 1.3), Vector3(cx, 0.1, cz), Color(0.95, 0.9, 0.95))
+	_bx(Vector3(case_w + 0.1, 0.12, 1.3), Vector3(cx, 2.86, cz), Color(1.0, 0.45, 0.8))
+	_solid(Vector3(case_w, 2.9, 1.25), Transform3D(Basis.IDENTITY, Vector3(cx, 1.45, cz)), true)
+	var spot:= SpotLight3D.new()
+	spot.light_color = Color(1.0, 0.9, 0.95)
+	spot.light_energy = 3.0
+	spot.spot_range = 5.0
+	spot.spot_angle = 55.0
+	spot.position = Vector3(cx, 2.75, cz)
+	spot.rotation.x = -PI * 0.5
+	add_child(spot)
+	for i in MANNEQUINS.size():
+		var path:= Skins.model_path(MANNEQUINS[i])
+		if not ResourceLoader.exists(path):
+			continue
+		var m:= CharacterModel.load_model(path, 0.012)
+		add_child(m)
+		m.position = Vector3(cx - case_w * 0.5 + (i + 0.5) * case_w / MANNEQUINS.size(), 0.2, cz - 0.1)
+		m.scale = Vector3.ONE * 0.92
+		m.rotation.y = rng.randf_range(-0.35, 0.35)
+		m.play("idle")
+	_reserved.append(Rect2(cx - 10.0, front.end.y + 3.0, 20.0, 10.0))
 
 
 func _build_police(block: Rect2) -> void:

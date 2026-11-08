@@ -432,7 +432,7 @@ class Character:
         prims = []
         tri_total = 0
         for mname, parts in groups.items():
-            vox = GROUP_VOXEL.get(mname, self.voxel if mname in ("body",) else min(self.voxel, 0.012))
+            vox = getattr(self, "group_voxel", {}).get(mname, GROUP_VOXEL.get(mname, self.voxel if mname in ("body",) else min(self.voxel, 0.012)))
             res = build_group(parts, vox)
             if res is None: continue
             verts, faces, normals, adds = res

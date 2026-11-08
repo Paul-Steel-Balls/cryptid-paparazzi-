@@ -40,6 +40,7 @@ func _ready() -> void:
 	if saved != "":
 		my_name = saved
 	_parse_cmdline.call_deferred()
+	GameState.skin_changed.connect(set_my_skin)
 
 
 func _parse_cmdline() -> void:
@@ -91,6 +92,34 @@ func color_of(id: int) -> Color:
 	return players.get(id, {}).get("color", Color.WHITE)
 
 
+func skin_of(id: int) -> String:
+	return str(players.get(id, {}).get("skin", Skins.DEFAULT))
+
+
+## You changed outfits: tell everyone (through the host).
+func set_my_skin(id: String) -> void:
+	if not online():
+		return
+	if is_host():
+		if players.has(1):
+			players[1]["skin"] = id
+		_sync_players.rpc(players)
+		players_changed.emit()
+	else:
+		_skin_update.rpc_id(1, id)
+
+
+@rpc("any_peer", "reliable")
+func _skin_update(id: String) -> void:
+	if not multiplayer.is_server():
+		return
+	var who:= multiplayer.get_remote_sender_id()
+	if players.has(who) and Skins.CATALOG.has(id):
+		players[who]["skin"] = id
+		_sync_players.rpc(players)
+		players_changed.emit()
+
+
 ## Addresses other people on your network can use to reach this PC.
 func local_addresses() -> Array:
 	var out: Array = []
@@ -112,7 +141,7 @@ func host_game(port: int = DEFAULT_PORT) -> bool:
 		connection_failed.emit(last_error)
 		return false
 	multiplayer.multiplayer_peer = _peer
-	players = {1: {"name": my_name, "color": _colors[0]}}
+	players = {1: {"name": my_name, "color": _colors[0], "skin": GameState.skin}}
 	players_changed.emit()
 	print("NET hosting on port ", port)
 	return true
@@ -173,7 +202,7 @@ func _on_peer_disconnected(id: int) -> void:
 
 func _on_connected() -> void:
 	print("NET connected as ", multiplayer.get_unique_id())
-	_register.rpc_id(1, my_name)
+	_register.rpc_id(1, my_name, GameState.skin)
 
 
 func _on_failed() -> void:
@@ -188,7 +217,7 @@ func _on_server_gone() -> void:
 
 ## A new arrival tells the host its name; the host hands out colours and tells everyone.
 @rpc("any_peer", "reliable")
-func _register(pname: String) -> void:
+func _register(pname: String, skin: String = "default") -> void:
 	if not multiplayer.is_server():
 		return
 	var id:= multiplayer.get_remote_sender_id()
@@ -203,7 +232,8 @@ func _register(pname: String) -> void:
 		if c not in used:
 			col = c
 			break
-	players[id] = {"name": pname.strip_edges().left(16) if pname.strip_edges() != "" else "Player %d" % id, "color": col}
+	players[id] = {"name": pname.strip_edges().left(16) if pname.strip_edges() != "" else "Player %d" % id, "color": col,
+		"skin": skin if Skins.CATALOG.has(skin) else Skins.DEFAULT}
 	_sync_players.rpc(players)
 	players_changed.emit()
 	# Bring them to the host's map and night.

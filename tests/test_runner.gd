@@ -57,6 +57,7 @@ func _ready() -> void:
 	await _test_v014()
 	await _test_v015()
 	await _test_v016()
+	await _test_v017()
 	print("RESULT: %d/%d checks passed" % [_passed, _passed + _failed])
 	if _failed > 0:
 		get_tree().quit(1)
@@ -1571,7 +1572,7 @@ func _test_v012() -> void:
 	_check("v012: first-person camera is a separate model", pl.find_child("Camera", true, false) is CharacterModel)
 	_check("v012: third-person body wears the camera", pl.find_child("ChestCamera", true, false) != null)
 	var st:= pl.net_state()
-	_check("v012: player reports its state for other players", st.size() == 11 and st[4] is String)
+	_check("v012: player reports its state for other players (v017: + camera raised)", st.size() == 12 and st[4] is String)
 	pl.free()
 	# Online plumbing: a puppet copies what the host sends and passes reactions back.
 	var pup:= (load("res://cryptid.tscn") as PackedScene).instantiate() as Cryptid
@@ -1834,5 +1835,141 @@ func _test_v016() -> void:
 		least = minf(least, driven[k])
 	print("traffic soak: least driven in 3 min = %.0f m" % least)
 	_check("v016: traffic never gridlocks (every car keeps moving over 3 minutes)", least > 300.0)
+	city.free()
+	GameState.reset()
+
+
+func _test_v017() -> void:
+	GameState.reset()
+	# Other players are see-through to your body (no more climbing each other into the sky).
+	var rp:= RemotePlayer.new()
+	rp.peer_id = 9
+	add_child(rp)
+	var pl:= (load("res://player.tscn") as PackedScene).instantiate() as Player
+	add_child(pl)
+	_check("v017: other players don't push you (separate physics layer you ignore)", rp.collision_layer == RemotePlayer.LAYER and (pl.collision_mask & RemotePlayer.LAYER) == 0)
+	_check("v017: you report whether your camera is up", pl.net_state().size() == 12)
+	pl.free()
+	# Raising the camera: both hands go to the camera at the face.
+	rp.apply_state([Vector3(0, 0.75, 0), 0.0, 0.0, 0.0, "idle", 0.0, false, false, false, false, false, true])
+	for i in 30:
+		await get_tree().process_frame
+	var sk:= rp.model.skeleton
+	# Modifier output only exists while the skeleton is updating: read it from that signal.
+	var seen:= [Vector3.ZERO]
+	var grab:= func(): seen[0] = sk.get_bone_global_pose(sk.find_bone("hand_r")).origin
+	sk.skeleton_updated.connect(grab)
+	for i in 3:
+		await get_tree().process_frame
+	sk.skeleton_updated.disconnect(grab)
+	var hand: Vector3 = seen[0]
+	var grip:= Vector3(ArmAim.GRIP.x * signf(sk.get_bone_global_rest(sk.find_bone("hand_r")).origin.x), ArmAim.GRIP.y, ArmAim.GRIP.z)
+	_check("v017: other players hold the camera up to their face (hands at the camera)", hand.distance_to(grip) < 0.08)
+	_check("v017: ...and the camera moves from the chest to the face", rp.get("_face_cam").visible and not rp.get("_cam_node").visible)
+	rp.free()
+	# Camp is a safe zone.
+	_check("v017: camp is a safe zone, the woods aren't", Terrain.in_camp(Vector3(Terrain.CAMP.x + 5, 0, Terrain.CAMP.y - 6)) and not Terrain.in_camp(Vector3(0, 0, 0)))
+	var holder:= Node3D.new()
+	add_child(holder)
+	var target:= Node3D.new()
+	holder.add_child(target)
+	target.global_position = Vector3(Terrain.CAMP.x, 0.9, Terrain.CAMP.y - 8)
+	var c:= (load("res://cryptid.tscn") as PackedScene).instantiate() as Cryptid
+	c.configure("cornicorn")
+	c.player_ref = target
+	c.map_half = 300.0
+	holder.add_child(c)
+	c.global_position = target.global_position + Vector3(0, 0, -4)
+	c.state = Cryptid.State.CHASE
+	_check("v017: in camp nothing can see you to chase you", c.is_player_hidden())
+	for i in 6:
+		await get_tree().physics_frame
+	_check("v017: a chase ends when you make it back to camp", c.state != Cryptid.State.CHASE and c.state != Cryptid.State.CAUGHT)
+	holder.free()
+	var forest:= Forest.new(1111, "woods")
+	add_child(forest)
+	var posts:= 0
+	for n in forest.get_children():
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh is BoxMesh and ((n as MeshInstance3D).mesh as BoxMesh).size.is_equal_approx(Vector3(0.3, 1.2, 0.3)):
+			posts += 1
+	_check("v017: the ring of posts round camp is gone", posts == 0)
+	# Better plants: detailed up close, the old ones far off, grass and real flowers.
+	var grass:= forest.get_node_or_null("Grass")
+	var trees:= forest.get_node_or_null("TreeCanopy_pine0")
+	var near_far:= false
+	if trees:
+		var hi:= false
+		var lo:= false
+		for n in trees.get_children():
+			var g:= n as GeometryInstance3D
+			if g.visibility_range_end > 0.0:
+				hi = true
+			if g.visibility_range_begin > 0.0:
+				lo = true
+		near_far = hi and lo
+	_check("v017: trees are detailed up close and simple far away", near_far)
+	_check("v017: grass tufts and real flowers", grass != null and grass.get_child_count() > 0 and forest.get_node_or_null("Flowers") != null)
+	_check("v017: detailed pines have needle boughs (lots more shape)", PlantMeshes.pine_hi(0).get_faces().size() / 3 > PlantMeshes.pine_canopy(0).get_faces().size() / 3 * 4)
+	forest.free()
+	# Lobby votes: nobody sleeps or drives on unless everyone agrees.
+	var stub_script:= GDScript.new()
+	stub_script.source_code = "extends Node\nvar passed: Array = []\nvar closed: Array = []\nfunc vote_passed(k, m): passed.append(k)\nfunc show_vote(v, d): pass\nfunc vote_closed(p, msg): closed.append(p)\nfunc vote_message(m): pass\n"
+	stub_script.reload()
+	var stub:= Node.new()
+	stub.set_script(stub_script)
+	add_child(stub)
+	var ns:= NetSync.new()
+	ns.setup(stub)
+	add_child(ns)
+	var saved_players:= Net.players
+	Net.players = {1: {"name": "Ian"}, 7: {"name": "Alex"}}
+	ns.call("_host_open_vote", 1, "sleep", "")
+	_check("v017: asking to sleep doesn't do it on its own", stub.get("passed").is_empty() and ns.vote_running())
+	ns.call("_host_answer", 7, true)
+	_check("v017: ...once everyone says yes, it happens", stub.get("passed") == ["sleep"] and not ns.vote_running())
+	ns.call("_host_open_vote", 7, "travel", "lake")
+	ns.call("_host_answer", 1, false)
+	_check("v017: one no and it's off", stub.get("passed") == ["sleep"] and stub.get("closed").back() == false and not ns.vote_running())
+	Net.players = saved_players
+	ns.free()
+	stub.free()
+	_check("v017: Y / N to vote (rebindable)", InputMap.has_action("vote_yes") and InputMap.has_action("vote_no"))
+	# Outfits: every one has a model, you can buy and wear them, others see them.
+	var missing:= []
+	for id in Skins.CATALOG:
+		if not ResourceLoader.exists(Skins.model_path(id)):
+			missing.append(id)
+	_check("v017: every outfit has a model", missing.is_empty() and Skins.CATALOG.size() >= 12)
+	GameState.money = 1000
+	_check("v017: can't buy an outfit you can't afford", not GameState.buy_skin("trex") and GameState.money == 1000)
+	_check("v017: buying an outfit takes the money", GameState.buy_skin("hawaiian") and GameState.money == 400 and "hawaiian" in GameState.owned_skins)
+	GameState.wear_skin("hawaiian")
+	_check("v017: ...and you can wear it", GameState.skin == "hawaiian")
+	var rp2:= RemotePlayer.new()
+	rp2.peer_id = 9
+	Net.players = {9: {"name": "Alex", "color": Color.RED, "skin": "default"}}
+	add_child(rp2)
+	Net.players[9]["skin"] = "banana"
+	rp2.refresh_name()
+	_check("v017: other players' outfits show up (and change when they change)", rp2.get("_skin") == "banana")
+	rp2.free()
+	Net.players = saved_players
+	var wardrobe:= WardrobeUI.new()
+	add_child(wardrobe)
+	wardrobe.open(true)
+	_check("v017: DRIP CITY lists every outfit", wardrobe.get("_list").get_child_count() == Skins.CATALOG.size())
+	wardrobe.close()
+	wardrobe.open(false)
+	await get_tree().process_frame
+	var closet_n:= 0
+	for ch in wardrobe.get("_list").get_children():
+		if not ch.is_queued_for_deletion():
+			closet_n += 1
+	_check("v017: the RV closet only shows what you own", closet_n == GameState.owned_skins.size())
+	wardrobe.free()
+	var city:= CityBlocks.new()
+	add_child(city)
+	await get_tree().process_frame
+	_check("v017: the City has a costume shop", city.landmarks.has("boutique"))
 	city.free()
 	GameState.reset()

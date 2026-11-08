@@ -30,8 +30,14 @@ var transmitting:= false
 var _capture: AudioEffectCapture
 var _phase:= 0.0
 var _pending:= PackedFloat32Array()
-var _stream_player: AudioStreamPlayer
 var _hear_timer:= 0.0
+## The microphone stream lives on the Audio autoload so it survives map changes. Godot's mic
+## input is a ring buffer: if the game stalls (a map loading) it can wrap and replay the same
+## second of audio over and over. So after any long frame we restart the stream and throw the
+## captured backlog away, and say nothing until it has settled.
+static var _mic_player: AudioStreamPlayer
+var _needs_restart:= true
+var _settle:= 0.0
 
 
 func _ready() -> void:
@@ -61,19 +67,39 @@ func _start() -> void:
 		_capture = AudioServer.get_bus_effect(idx, 0) as AudioEffectCapture
 	# Captured before the bus volume is applied, so you hear none of yourself.
 	AudioServer.set_bus_volume_db(idx, -80.0)
-	_stream_player = AudioStreamPlayer.new()
-	_stream_player.stream = AudioStreamMicrophone.new()
-	_stream_player.bus = BUS
-	add_child(_stream_player)
-	_stream_player.play()
+	if _mic_player == null or not is_instance_valid(_mic_player):
+		_mic_player = AudioStreamPlayer.new()
+		_mic_player.name = "Microphone"
+		_mic_player.stream = AudioStreamMicrophone.new()
+		_mic_player.bus = BUS
+		_mic_player.process_mode = Node.PROCESS_MODE_ALWAYS
+		Audio.add_child(_mic_player)
 	active = true
+	_needs_restart = true
+
+
+## Fresh start for the mic: stop, drop everything captured so far, play again, then a short
+## quiet spell before anything counts as your voice.
+func restart_stream() -> void:
+	if _mic_player == null or not is_instance_valid(_mic_player):
+		return
+	_mic_player.stop()
+	if _capture:
+		_capture.clear_buffer()
+	_pending.clear()
+	_phase = 0.0
+	level = 0.0
+	_mic_player.play()
+	_settle = 0.35
+	_needs_restart = false
 
 
 func _stop() -> void:
-	if _stream_player:
-		_stream_player.stop()
-		_stream_player.queue_free()
-		_stream_player = null
+	if _mic_player and is_instance_valid(_mic_player):
+		_mic_player.stop()
+	if _capture:
+		_capture.clear_buffer()
+	_pending.clear()
 	active = false
 	transmitting = false
 	level = 0.0
@@ -148,6 +174,18 @@ static func hear_radius(l: float) -> float:
 func _process(delta: float) -> void:
 	_sync()
 	if not active or _capture == null:
+		return
+	# A long frame (map loading, a hitch): the mic buffer may have wrapped. Start clean once
+	# frames are back to normal.
+	if delta > 0.25:
+		_needs_restart = true
+	if _needs_restart:
+		if delta < 0.1:
+			restart_stream()
+		return
+	if _settle > 0.0:
+		_settle -= delta
+		_capture.clear_buffer()
 		return
 	var n:= _capture.get_frames_available()
 	if n > 0:

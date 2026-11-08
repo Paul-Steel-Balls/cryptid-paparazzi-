@@ -134,8 +134,9 @@ func _hunt(delta: float) -> void:
 	var target:= player.global_position
 	var to:= Vector3(target.x - global_position.x, 0, target.z - global_position.z)
 	var d:= to.length()
-	# Indoors (the RV) you're safe: it circles and waits.
-	if player.indoors:
+	# Indoors (the RV) or anywhere in camp you're safe: it circles and waits.
+	var safe:= player.indoors or Terrain.in_camp(player.global_position)
+	if safe:
 		var ang:= _t * 0.4
 		target = player.global_position + Vector3(cos(ang), 0, sin(ang)) * 14.0
 		to = Vector3(target.x - global_position.x, 0, target.z - global_position.z)
@@ -147,7 +148,7 @@ func _hunt(delta: float) -> void:
 	global_position.y = lerpf(global_position.y, want_y, clampf(delta * 1.5, 0.0, 1.0))
 	if phase == Phase.ARRIVE and d < 30.0:
 		phase = Phase.HUNT
-	if not player.indoors and d < BEAM_RANGE and not GameState.game_over:
+	if not safe and d < BEAM_RANGE and not GameState.game_over:
 		_over += delta
 		if _over > BEAM_DELAY:
 			_start_beam()

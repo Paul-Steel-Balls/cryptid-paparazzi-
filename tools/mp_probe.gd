@@ -104,7 +104,21 @@ func _process(d):
 		print("CLIENT after being grabbed: unsold=", gs.unsold_photos.size(), " pos=", p.global_position.snapped(Vector3.ONE))
 	if role == "host" and phase == 1 and t > 26.0:
 		phase = 2
-		m.call("_sleep")
+		# v0.17: nobody sleeps unless everyone agrees. Ask; the client says yes below.
+		m.get("_net").start_vote("sleep", "")
+		print("HOST asked to sleep: vote running=", m.get("_net").vote_running(), " night=", gs.night)
+	if role == "client" and m.get("_net") != null and m.get("_net").vote_running() and not has_meta("voted"):
+		set_meta("voted", true)
+		print("CLIENT sees vote: ", m.get("_hud").vote_text().replace("\n", " | "))
+		m.get("_net").answer_vote(true)
+	if role == "client" and t > 15.0 and not has_meta("dressed"):
+		set_meta("dressed", true)
+		gs.owned_skins = ["default", "banana"]
+		gs.wear_skin("banana")
+	if role == "host" and t > 24.5 and not has_meta("skin_report") and m.get("_net") != null:
+		set_meta("skin_report", true)
+		for id in m.get("_net").remotes:
+			print("HOST sees ", net.name_of(id), " wearing ", net.skin_of(id), " (model ", m.get("_net").remotes[id].get("_skin"), ")")
 	if role == "client" and phase == 3 and t > 36.0:
 		phase = 4
 		var cs = m.get("_cryptids")
