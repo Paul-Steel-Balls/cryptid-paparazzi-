@@ -170,6 +170,7 @@ func seat_driver() -> void:
 		_driver.rotation.y = PI / 2
 		add_child(_driver)
 		_set_layers(_driver)
+		Skins.add_springs(_driver)
 	_driver.visible = true
 	_driver.play("drive")
 

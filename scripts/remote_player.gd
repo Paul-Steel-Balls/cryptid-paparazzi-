@@ -99,6 +99,7 @@ func _build_model(sk: String) -> void:
 		_arm_aim = ArmAim.new()   # after HeadLook: the hands reach for where the head ends up
 		_arm_aim.setup(model)
 		model.skeleton.add_child(_arm_aim)
+		Skins.add_springs(model)   # floppy costume bits, last of all
 
 
 func refresh_name() -> void:

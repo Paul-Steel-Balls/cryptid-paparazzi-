@@ -58,6 +58,7 @@ func _ready() -> void:
 	await _test_v015()
 	await _test_v016()
 	await _test_v017()
+	await _test_v018()
 	print("RESULT: %d/%d checks passed" % [_passed, _passed + _failed])
 	if _failed > 0:
 		get_tree().quit(1)
@@ -1972,4 +1973,66 @@ func _test_v017() -> void:
 	await get_tree().process_frame
 	_check("v017: the City has a costume shop", city.landmarks.has("boutique"))
 	city.free()
+	GameState.reset()
+
+
+func _test_v018() -> void:
+	GameState.reset()
+	# Footbridge: a smooth walkable surface from the sidewalk, up the ramp, over the landing and
+	# across the deck, with nothing in the way at waist height.
+	var city:= CityBlocks.new()
+	add_child(city)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var space:= city.get_world_3d().direct_space_state
+	var rz: float = CityBlocks.EW_ROADS[2]
+	var zc:= rz + CityBlocks.ROAD_HALF + 1.15
+	var x0:= CityBlocks.FOOTBRIDGE_X
+	var path: Array[Vector3] = []
+	var x:= x0 + 1.3 + CityBlocks.FOOTBRIDGE_RUN - 0.3   # (the test city has no ground beyond the ramp's foot)
+	while x > x0:
+		path.append(Vector3(x, 0, zc))
+		x -= 0.5
+	var z:= zc
+	while z > rz:
+		path.append(Vector3(x0, 0, z))
+		z -= 0.5
+	var heights: Array[float] = []
+	for p in path:
+		var hit:= space.intersect_ray(PhysicsRayQueryParameters3D.create(p + Vector3(0, 12, 0), p + Vector3(0, -1, 0)))
+		heights.append(float(hit["position"].y) if not hit.is_empty() else -99.0)
+	var worst_step:= 0.0
+	for i in range(1, heights.size()):
+		worst_step = maxf(worst_step, absf(heights[i] - heights[i - 1]))
+	_check("v018: the footbridge is one smooth walk from the sidewalk to the deck (no steps)", worst_step < 0.3 and heights.back() > 5.0)
+	var blocked:= false
+	for i in range(1, path.size()):
+		var a:= path[i - 1] + Vector3(0, heights[i - 1] + 0.6, 0)
+		var b:= path[i] + Vector3(0, heights[i] + 0.6, 0)
+		var hh:= space.intersect_ray(PhysicsRayQueryParameters3D.create(a, b))
+		if not hh.is_empty():
+			blocked = true
+	_check("v018: ...and no railing across the way", not blocked)
+	city.free()
+	# Floppy costume bits: the T-Rex's head lags behind when it turns.
+	var m:= CharacterModel.load_model(Skins.model_path("trex"), 0.012)
+	add_child(m)
+	m.play("idle")
+	var sim:= Skins.add_springs(m)
+	_check("v018: floppy outfits get springs (T-Rex neck and tail)", sim != null and sim.get_setting_count() >= 4)
+	var sk:= m.skeleton
+	var head:= sk.find_bone("jig_neck_2")
+	var seen:= [Vector3.ZERO]
+	var grab:= func(): seen[0] = sk.get_bone_global_pose(head).basis.y
+	sk.skeleton_updated.connect(grab)
+	for i in 20:
+		await get_tree().process_frame
+	var rest_up: Vector3 = seen[0]
+	m.position.x += 0.6    # a sudden lurch sideways
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var lagged: Vector3 = seen[0]
+	sk.skeleton_updated.disconnect(grab)
+	_check("v018: ...and the dino head flops when you move", rest_up.angle_to(lagged) > 0.02)
+	m.free()
 	GameState.reset()

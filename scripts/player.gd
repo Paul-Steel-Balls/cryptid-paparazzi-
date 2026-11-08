@@ -971,6 +971,7 @@ func _load_body_model() -> void:
 	if _body_model.skeleton:
 		_head_look = HeadLook.new()
 		_body_model.skeleton.add_child(_head_look)
+		Skins.add_springs(_body_model)
 
 
 func _on_skin_changed(_id: String) -> void:

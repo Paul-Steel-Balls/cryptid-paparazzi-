@@ -18,6 +18,13 @@ def J(s, name):
     return np.array(s.heads[s.idx(name)], float)
 
 
+def jig(s, name, parent, pos):
+    """A floppy bone (the game hangs a spring on every bone called jig_<chain>_<n>)."""
+    if name not in s.names:
+        s.add(name, parent, pos)
+    return name
+
+
 def face_hole(color, z=0.17, rx=0.112, ry=0.135, cy=1.645, mat="cloth", bone="head"):
     """Cut the face opening out of a hood/costume head (only in that costume's mesh group)."""
     return ellipsoid((0, cy, z), (rx, ry, 0.16), bone, color, mat=mat, sub=True, k=0.02)
@@ -80,7 +87,8 @@ def hawaiian_dad(s):
         ch.add(ellipsoid((0, 1.79, -0.01), (0.15, 0.08, 0.15), "head", (0.55, 0.62, 0.4), mat="cloth", k=0.02))
         ch.add(torus((0, 1.75, -0.01), 0.15, 0.012, "head", (0.85, 0.3, 0.2), mat="cloth"))
         ch.add(ellipsoid((0, 1.662, 0.18), (0.022, 0.012, 0.012), "head", WHITE, mat="shiny", k=0.0))
-        ch.add(box((0, 0.98, 0.15), (0.11, 0.05, 0.04), "hips", (1.0, 0.25, 0.65), r=0.03, mat="cloth", k=0.01))
+        pack = jig(s, "jig_pack_1", "hips", (0, 1.01, 0.13))
+        ch.add(box((0, 0.98, 0.15), (0.11, 0.05, 0.04), pack, (1.0, 0.25, 0.65), r=0.03, mat="cloth", k=0.01))
         ch.add(box((0, 0.98, 0.0), (0.18, 0.012, 0.13), "hips", (0.1, 0.1, 0.1), r=0.01, mat="cloth", k=0.0))
         for side, x in (("l", -1), ("r", 1)):
             kn, ft = J(s, f"knee_{side}"), J(s, f"foot_{side}")
@@ -110,10 +118,12 @@ def ghillie(s):
             c = np.array([math.cos(a) * r, y, math.sin(a) * r - 0.02])
             if c[2] > 0.08 and y > 1.5:
                 continue   # keep the face clear
-            bone = "head" if y > 1.5 else ("chest" if y > 1.05 else "hips")
+            par = "head" if y > 1.5 else ("chest" if y > 1.05 else "hips")
+            # Every tuft hangs off its own little spring, so the suit rustles as you move.
+            bone = jig(s, f"jig_leaf{_}_1", par, c - np.array([math.cos(a), 0, math.sin(a)]) * 0.05)
             ch.add(ellipsoid(c, (0.07, 0.03, 0.05), bone, (0.3 + rng.uniform(-0.08, 0.1), 0.42, 0.16), mat="cloth",
                              rot=(rng.uniform(-1, 1), a, rng.uniform(-1, 1)), noise=(0.012, 30.0), k=0.03))
-    return dict(cap=None, backpack=False, extra=extra, name="Ghillie Suit")
+    return dict(cap=None, backpack=False, arms_hidden=True, extra=extra, name="Ghillie Suit")
 
 
 def bigfoot_onesie(s):
@@ -130,7 +140,8 @@ def bigfoot_onesie(s):
         ch.add(ellipsoid((0, 1.71, -0.02), (0.18, 0.2, 0.18), "head", brown, mat="cloth", noise=fuzz, k=0.03))
         ch.add(face_hole(brown))
         for x in (-1, 1):
-            ch.add(sphere((x * 0.12, 1.87, -0.02), 0.055, "head", brown, mat="cloth", noise=fuzz, k=0.02))
+            ear = jig(s, "jig_ear%s_1" % ("l" if x < 0 else "r"), "head", (x * 0.1, 1.83, -0.02))
+            ch.add(sphere((x * 0.12, 1.87, -0.02), 0.055, ear, brown, mat="cloth", noise=fuzz, k=0.02))
         googly(ch, "head", (-0.055, 1.855, 0.12), 0.04)
         googly(ch, "head", (0.055, 1.855, 0.12), 0.04)
         limb_shells(ch, s, brown, brown, arm_r=0.075, leg_r=0.105, noise=fuzz)
@@ -139,7 +150,7 @@ def bigfoot_onesie(s):
             ch.add(ellipsoid((x * 0.1, 0.07, 0.07), (0.1, 0.08, 0.19), f"foot_{side}", brown, mat="cloth", noise=fuzz, k=0.03))
             for t in (-1, 0, 1):
                 ch.add(sphere((x * 0.1 + t * 0.055, 0.06, 0.25), 0.042, f"foot_{side}", (0.3, 0.2, 0.12), mat="cloth", k=0.02))
-    return dict(cap=None, backpack=False, hands=(0.3, 0.2, 0.12), boots=None, extra=extra, name="Bigfoot Onesie")
+    return dict(cap=None, backpack=False, hands=(0.3, 0.2, 0.12), boots=None, arms_hidden=True, extra=extra, name="Bigfoot Onesie")
 
 
 def banana(s):
@@ -156,8 +167,11 @@ def banana(s):
         ch.add(capsule((0, 0.72, 0.03), (0, 1.4, 0.0), 0.28, "spine", peel, rb=0.27, mat="cloth", k=0.05))
         ch.add(ellipsoid((0, 1.73, -0.08), (0.24, 0.42, 0.21), "chest", peel, mat="cloth", k=0.08))
         ch.add(face_hole(peel, z=0.12, rx=0.118, ry=0.145, bone="chest"))
-        ch.add(capsule((0, 2.08, -0.15), (0, 2.3, -0.27), 0.05, "chest", (0.45, 0.33, 0.12), rb=0.035, mat="cloth", k=0.03))
-        ch.add(sphere((0, 2.33, -0.29), 0.04, "chest", (0.2, 0.15, 0.08), mat="cloth", k=0.02))
+        st1 = jig(s, "jig_stem_1", "chest", (0, 2.04, -0.13))
+        st2 = jig(s, "jig_stem_2", st1, (0, 2.2, -0.21))
+        ch.add(capsule((0, 2.04, -0.13), (0, 2.2, -0.21), 0.05, st1, (0.45, 0.33, 0.12), rb=0.042, mat="cloth", k=0.03))
+        ch.add(capsule((0, 2.2, -0.21), (0, 2.32, -0.29), 0.042, st2, (0.45, 0.33, 0.12), rb=0.035, mat="cloth", k=0.03))
+        ch.add(sphere((0, 2.34, -0.3), 0.04, st2, (0.2, 0.15, 0.08), mat="cloth", k=0.02))
         ch.add(ellipsoid((0, 0.5, 0.05), (0.07, 0.07, 0.07), "spine", (0.3, 0.22, 0.1), mat="cloth", k=0.06))
     return dict(cap=None, backpack=False, hair=None, torso=yel, pockets=None, upper_arm=yel, cuff=None,
                 hips=BLACK, belt=None, thigh=BLACK, shin=BLACK, boots=(0.1, 0.1, 0.1), extra=extra, name="Banana")
@@ -170,16 +184,23 @@ def hot_dog(s):
         top = vnoise(p, 9.0, 2.0)[:, None] * 0.12
         return np.clip(out - top, 0, 1)
     def extra(ch, s):
-        ch.add(capsule((0, 0.68, 0.03), (0, 2.02, -0.04), 0.2, "spine", sausage, mat="cloth", k=0.03))
+        top1 = jig(s, "jig_top_1", "spine", (0, 1.8, -0.02))
+        top2 = jig(s, "jig_top_2", top1, (0, 1.95, -0.03))
+        ch.add(capsule((0, 0.68, 0.03), (0, 1.82, -0.02), 0.2, "spine", sausage, mat="cloth", k=0.03))
+        ch.add(capsule((0, 1.8, -0.02), (0, 1.95, -0.03), 0.2, top1, sausage, mat="cloth", k=0.03))
+        ch.add(capsule((0, 1.95, -0.03), (0, 2.04, -0.04), 0.2, top2, sausage, mat="cloth", k=0.03))
         ch.add(face_hole(sausage, z=0.15, rx=0.115, ry=0.14, bone="spine"))
         for x in (-1, 1):
-            ch.add(ellipsoid((x * 0.21, 1.3, -0.04), (0.13, 0.66, 0.24), "spine", bun_col, mat="cloth", k=0.03))
+            # Slim buns that sit behind the arms (so raising the camera doesn't leave them behind),
+            # wobbling from the bottom.
+            bun = jig(s, "jig_bun%s_1" % ("l" if x < 0 else "r"), "spine", (x * 0.18, 0.78, -0.08))
+            ch.add(ellipsoid((x * 0.18, 1.3, -0.08), (0.09, 0.64, 0.2), bun, bun_col, mat="cloth", k=0.03))
         # Mustard and ketchup zig-zags down the front.
         pts = [(-0.11, 1.42), (0.11, 1.32), (-0.12, 1.2), (0.12, 1.08), (-0.12, 0.96), (0.11, 0.84)]
         for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
             ch.add(capsule((x0, y0, 0.205), (x1, y1, 0.205), 0.022, "spine", mustard, mat="shiny", k=0.01))
             ch.add(capsule((x0 * 0.6, y0 - 0.05, 0.2), (x1 * 0.6, y1 - 0.05, 0.2), 0.016, "spine", ketchup, mat="shiny", k=0.01))
-        ch.add(capsule((-0.12, 1.92, 0.12), (0.12, 1.98, 0.08), 0.02, "spine", mustard, mat="shiny", k=0.01))
+        ch.add(capsule((-0.12, 1.92, 0.12), (0.12, 1.98, 0.08), 0.02, top1, mustard, mat="shiny", k=0.01))
     return dict(cap=None, backpack=False, hair=None, torso=sausage, pockets=None, upper_arm=bun, cuff=None, forearm=bun,
                 hips=bun, belt=None, thigh=bun, shin=bun, boots=(0.85, 0.15, 0.1), extra=extra, name="Hot Dog")
 
@@ -193,36 +214,47 @@ def t_rex(s):
         return out
     def extra(ch, s):
         ch.add(ellipsoid((0, 1.12, -0.02), (0.34, 0.46, 0.31), "spine", body, mat="cloth", k=0.05))
-        ch.add(capsule((0, 1.42, 0.0), (0, 1.92, 0.06), 0.21, "chest", body, mat="cloth", k=0.06))
+        # The inflatable neck and head flop about on two springs.
+        n1 = jig(s, "jig_neck_1", "chest", (0, 1.72, 0.03))
+        n2 = jig(s, "jig_neck_2", n1, (0, 1.98, 0.08))
+        ch.add(capsule((0, 1.42, 0.0), (0, 1.76, 0.03), 0.21, "chest", body, mat="cloth", k=0.06))
+        ch.add(capsule((0, 1.72, 0.03), (0, 2.0, 0.07), 0.205, n1, body, mat="cloth", k=0.06))
         ch.add(face_hole(body, z=0.14, rx=0.105, ry=0.12, bone="chest"))
         # The big dino head on top, mouth open, plenty of teeth.
-        ch.add(ellipsoid((0, 2.14, 0.12), (0.2, 0.17, 0.28), "chest", green, mat="cloth", k=0.04))
-        ch.add(ellipsoid((0, 2.12, 0.36), (0.15, 0.11, 0.17), "chest", green, mat="cloth", k=0.05))
-        ch.add(ellipsoid((0, 1.98, 0.3), (0.13, 0.045, 0.21), "chest", green, mat="cloth", rot=(0.25, 0, 0), k=0.03))
-        ch.add(ellipsoid((0, 2.04, 0.34), (0.12, 0.03, 0.16), "chest", (0.75, 0.2, 0.25), mat="shiny", k=0.0))
+        ch.add(ellipsoid((0, 2.14, 0.12), (0.2, 0.17, 0.28), n2, green, mat="cloth", k=0.04))
+        ch.add(ellipsoid((0, 2.12, 0.36), (0.15, 0.11, 0.17), n2, green, mat="cloth", k=0.05))
+        ch.add(ellipsoid((0, 1.98, 0.3), (0.13, 0.045, 0.21), n2, green, mat="cloth", rot=(0.25, 0, 0), k=0.03))
+        ch.add(ellipsoid((0, 2.04, 0.34), (0.12, 0.03, 0.16), n2, (0.75, 0.2, 0.25), mat="shiny", k=0.0))
         for i in range(7):
             x = -0.11 + i * 0.037
-            ch.add(ellipsoid((x, 2.03, 0.46 - abs(x) * 0.6), (0.012, 0.03, 0.012), "chest", WHITE, mat="shiny", k=0.0))
-            ch.add(ellipsoid((x, 2.0, 0.42 - abs(x) * 0.6), (0.011, 0.026, 0.011), "chest", WHITE, mat="shiny", k=0.0))
-        googly(ch, "chest", (-0.12, 2.24, 0.25), 0.045, look=(-0.4, 0, 1))
-        googly(ch, "chest", (0.12, 2.24, 0.25), 0.045, look=(0.4, 0, 1))
+            ch.add(ellipsoid((x, 2.03, 0.46 - abs(x) * 0.6), (0.012, 0.03, 0.012), n2, WHITE, mat="shiny", k=0.0))
+            ch.add(ellipsoid((x, 2.0, 0.42 - abs(x) * 0.6), (0.011, 0.026, 0.011), n2, WHITE, mat="shiny", k=0.0))
+        googly(ch, n2, (-0.12, 2.24, 0.25), 0.045, look=(-0.4, 0, 1))
+        googly(ch, n2, (0.12, 2.24, 0.25), 0.045, look=(0.4, 0, 1))
         for x in (-1, 1):
-            ch.add(sphere((x * 0.05, 2.17, 0.52), 0.015, "chest", (0.15, 0.25, 0.1), mat="cloth", k=0.0))
-            # Tiny useless arms.
-            ch.add(capsule((x * 0.2, 1.32, 0.24), (x * 0.22, 1.2, 0.36), 0.045, "chest", green, mat="cloth", k=0.02))
+            ch.add(sphere((x * 0.05, 2.17, 0.52), 0.015, n2, (0.15, 0.25, 0.1), mat="cloth", k=0.0))
+            # Tiny useless arms, flapping.
+            arm = jig(s, "jig_arm%s_1" % ("l" if x < 0 else "r"), "chest", (x * 0.2, 1.33, 0.23))
+            ch.add(capsule((x * 0.2, 1.32, 0.24), (x * 0.22, 1.2, 0.36), 0.045, arm, green, mat="cloth", k=0.02))
             for t in (-1, 1):
-                ch.add(capsule((x * 0.22 + t * 0.015, 1.2, 0.36), (x * 0.22 + t * 0.02, 1.15, 0.4), 0.01, "chest", WHITE, mat="shiny", k=0.0))
-        # Spines down the back, and a big tail.
+                ch.add(capsule((x * 0.22 + t * 0.015, 1.2, 0.36), (x * 0.22 + t * 0.02, 1.15, 0.4), 0.01, arm, WHITE, mat="shiny", k=0.0))
+        # Spines down the back, and a big tail on three springs.
         for i in range(6):
-            ch.add(ellipsoid((0, 2.18 - i * 0.2, -0.17 - (0.12 if i > 1 else 0.0)), (0.015, 0.05, 0.04), "chest" if i < 3 else "spine",
+            bone = n2 if i == 0 else (n1 if i == 1 else ("chest" if i < 3 else "spine"))
+            ch.add(ellipsoid((0, 2.18 - i * 0.2, -0.17 - (0.12 if i > 1 else 0.0)), (0.015, 0.05, 0.04), bone,
                              (0.25, 0.45, 0.18), mat="cloth", k=0.02))
-        ch.add(capsule((0, 0.98, -0.24), (0, 0.42, -0.95), 0.2, "hips", green, rb=0.04, mat="cloth", k=0.05))
+        t1 = jig(s, "jig_tail_1", "hips", (0, 0.98, -0.25))
+        t2 = jig(s, "jig_tail_2", t1, (0, 0.76, -0.55))
+        t3 = jig(s, "jig_tail_3", t2, (0, 0.57, -0.8))
+        ch.add(capsule((0, 0.98, -0.24), (0, 0.76, -0.55), 0.2, t1, green, rb=0.14, mat="cloth", k=0.05))
+        ch.add(capsule((0, 0.76, -0.55), (0, 0.57, -0.8), 0.14, t2, green, rb=0.08, mat="cloth", k=0.05))
+        ch.add(capsule((0, 0.57, -0.8), (0, 0.42, -0.97), 0.08, t3, green, rb=0.035, mat="cloth", k=0.04))
         limb_shells(ch, s, green, green, arm_r=0.075, leg_r=0.14)
         for side, x in (("l", -1), ("r", 1)):
             ch.add(ellipsoid((x * 0.1, 0.07, 0.07), (0.11, 0.08, 0.17), f"foot_{side}", green, mat="cloth", k=0.03))
             for t in (-1, 0, 1):
                 ch.add(ellipsoid((x * 0.1 + t * 0.05, 0.04, 0.24), (0.015, 0.02, 0.035), f"foot_{side}", WHITE, mat="shiny", k=0.0))
-    return dict(cap=None, backpack=False, hair=None, boots=None, extra=extra, name="Inflatable T-Rex")
+    return dict(cap=None, backpack=False, hair=None, boots=None, arms_hidden=True, extra=extra, name="Inflatable T-Rex")
 
 
 def astronaut(s):
@@ -232,6 +264,11 @@ def astronaut(s):
         ch.add(ellipsoid((0, 0.9, 0.0), (0.23, 0.15, 0.18), "hips", white, mat="cloth", k=0.04))
         ch.add(box((0, 1.25, -0.25), (0.19, 0.26, 0.1), "chest", white, r=0.05, mat="cloth", k=0.02))
         ch.add(cylinder((0.12, 1.45, -0.25), (0.12, 1.55, -0.25), 0.04, "chest", grey, mat="metal"))
+        an1 = jig(s, "jig_ant_1", "chest", (-0.12, 1.5, -0.25))
+        an2 = jig(s, "jig_ant_2", an1, (-0.12, 1.72, -0.26))
+        ch.add(cylinder((-0.12, 1.5, -0.25), (-0.12, 1.72, -0.26), 0.008, an1, grey, mat="metal"))
+        ch.add(cylinder((-0.12, 1.72, -0.26), (-0.12, 1.9, -0.27), 0.006, an2, grey, mat="metal"))
+        ch.add(sphere((-0.12, 1.91, -0.27), 0.02, an2, (0.9, 0.15, 0.1), mat="shiny", k=0.0))
         # Chest control box (off to one side so the camera can hang in front).
         ch.add(box((0.12, 1.05, 0.19), (0.07, 0.05, 0.03), "chest", grey, r=0.01, mat="cloth", k=0.01))
         for i, c in enumerate([(0.9, 0.15, 0.1), (0.1, 0.4, 0.9), (0.2, 0.8, 0.3)]):
@@ -252,14 +289,15 @@ def astronaut(s):
         sh = J(s, "shoulder_r")
         ch.add(box(sh + np.array([0.05, -0.07, 0.0]), (0.012, 0.035, 0.05), "shoulder_r",
                    stripes((0.85, 0.1, 0.1), WHITE, axis=1, period=0.012), r=0.003, mat="cloth", k=0.0))
-    return dict(cap=None, backpack=False, hands=white, boots=None, extra=extra, name="Astronaut")
+    return dict(cap=None, backpack=False, hands=white, boots=None, arms_hidden=True, extra=extra, name="Astronaut")
 
 
 def disco(s):
     gold = sparkle((0.95, 0.72, 0.2))
     def extra(ch, s):
-        ch.add(sphere((0, 1.75, -0.04), 0.27, "head", (0.18, 0.1, 0.06), mat="cloth", noise=(0.02, 22.0), k=0.03))
-        ch.add(face_hole((0.18, 0.1, 0.06), z=0.19, rx=0.12, ry=0.15))
+        fro = jig(s, "jig_fro_1", "head", (0, 1.68, -0.04))
+        ch.add(sphere((0, 1.75, -0.04), 0.27, fro, (0.18, 0.1, 0.06), mat="cloth", noise=(0.02, 22.0), k=0.03))
+        ch.add(face_hole((0.18, 0.1, 0.06), z=0.19, rx=0.12, ry=0.15, bone=fro))
         # Sunglasses, giant collar, medallion, bell bottoms, platform shoes.
         for x in (-1, 1):
             ch.add(ellipsoid((x * 0.052, 1.685, 0.142), (0.042, 0.03, 0.012), "head", (0.08, 0.05, 0.12), mat="shiny", k=0.0))
@@ -283,7 +321,10 @@ def pirate(s):
         return out
     def extra(ch, s):
         # Coat tails, gold buttons, tall black boots.
-        ch.add(ellipsoid((0, 0.72, -0.05), (0.23, 0.3, 0.15), "hips", coat, mat="cloth", k=0.04))
+        c1 = jig(s, "jig_coat_1", "hips", (0, 0.9, -0.08))
+        c2 = jig(s, "jig_coat_2", c1, (0, 0.65, -0.1))
+        ch.add(ellipsoid((0, 0.8, -0.06), (0.23, 0.14, 0.15), c1, coat, mat="cloth", k=0.04))
+        ch.add(ellipsoid((0, 0.58, -0.08), (0.22, 0.16, 0.13), c2, coat, mat="cloth", k=0.04))
         for y in (1.32, 1.2, 1.08, 0.96):
             for x in (-0.075, 0.075):
                 ch.add(sphere((x, y, 0.125), 0.014, "chest" if y > 1.15 else "spine", gold, mat="metal", k=0.0))
@@ -304,18 +345,20 @@ def pirate(s):
         ch.add(sphere((0, 1.86, 0.17), 0.024, "head", WHITE, mat="shiny", k=0.0))
         ch.add(ellipsoid((0.052, 1.688, 0.135), (0.034, 0.03, 0.012), "head", BLACK, mat="cloth", k=0.0))
         ch.add(torus((0, 1.7, 0.0), 0.142, 0.005, "head", BLACK, mat="cloth", rot=(0.3, 0, 0.25)))
-        ch.add(ellipsoid((0, 1.53, 0.1), (0.12, 0.11, 0.07), "head", (0.75, 0.35, 0.1), mat="cloth", noise=(0.012, 35.0), k=0.03))
+        beard = jig(s, "jig_beard_1", "head", (0, 1.6, 0.1))
+        ch.add(ellipsoid((0, 1.53, 0.1), (0.12, 0.11, 0.07), beard, (0.75, 0.35, 0.1), mat="cloth", noise=(0.012, 35.0), k=0.03))
         ch.add(capsule((-0.06, 1.6, 0.14), (0.06, 1.6, 0.14), 0.015, "head", (0.75, 0.35, 0.1), mat="cloth", k=0.01))
         # A parrot on the shoulder (sits on the chest so it doesn't fly off when the arm moves).
         px, py, pz = -0.21, 1.52, -0.02
-        ch.add(ellipsoid((px, py, pz), (0.05, 0.08, 0.06), "chest", (0.85, 0.12, 0.1), mat="shiny", k=0.02))
-        ch.add(sphere((px, py + 0.1, pz + 0.02), 0.045, "chest", (0.85, 0.12, 0.1), mat="shiny", k=0.02))
-        ch.add(ellipsoid((px, py + 0.09, pz + 0.07), (0.018, 0.024, 0.03), "chest", (0.95, 0.85, 0.2), mat="shiny", rot=(0.6, 0, 0), k=0.0))
-        googly(ch, "chest", (px - 0.03, py + 0.115, pz + 0.045), 0.014, look=(-0.6, 0, 0.8))
-        googly(ch, "chest", (px + 0.03, py + 0.115, pz + 0.045), 0.014, look=(0.6, 0, 0.8))
+        bird = jig(s, "jig_parrot_1", "chest", (px, py - 0.08, pz))
+        ch.add(ellipsoid((px, py, pz), (0.05, 0.08, 0.06), bird, (0.85, 0.12, 0.1), mat="shiny", k=0.02))
+        ch.add(sphere((px, py + 0.1, pz + 0.02), 0.045, bird, (0.85, 0.12, 0.1), mat="shiny", k=0.02))
+        ch.add(ellipsoid((px, py + 0.09, pz + 0.07), (0.018, 0.024, 0.03), bird, (0.95, 0.85, 0.2), mat="shiny", rot=(0.6, 0, 0), k=0.0))
+        googly(ch, bird, (px - 0.03, py + 0.115, pz + 0.045), 0.014, look=(-0.6, 0, 0.8))
+        googly(ch, bird, (px + 0.03, py + 0.115, pz + 0.045), 0.014, look=(0.6, 0, 0.8))
         for x in (-1, 1):
-            ch.add(ellipsoid((px + x * 0.045, py - 0.01, pz - 0.01), (0.015, 0.065, 0.045), "chest", (0.15, 0.4, 0.85), mat="shiny", k=0.01))
-        ch.add(capsule((px, py - 0.06, pz - 0.04), (px, py - 0.2, pz - 0.1), 0.02, "chest", (0.95, 0.8, 0.15), rb=0.008, mat="shiny", k=0.01))
+            ch.add(ellipsoid((px + x * 0.045, py - 0.01, pz - 0.01), (0.015, 0.065, 0.045), bird, (0.15, 0.4, 0.85), mat="shiny", k=0.01))
+        ch.add(capsule((px, py - 0.06, pz - 0.04), (px, py - 0.2, pz - 0.1), 0.02, bird, (0.95, 0.8, 0.15), rb=0.008, mat="shiny", k=0.01))
     return dict(cap=None, hair=(0.75, 0.35, 0.1), backpack=False, torso=coat_col, pockets=None, upper_arm=coat, cuff=coat, forearm=coat,
                 hips=cream, belt=(0.25, 0.15, 0.08), thigh=cream, shin=cream, boots=None, extra=extra, name="Pirate Captain")
 
@@ -326,8 +369,10 @@ def clown(s):
                                   0.5 + 0.5 * np.sin(p[:, 1] * 25 + 4.2)], 1)
     def extra(ch, s):
         for x in (-1, 1):
-            ch.add(sphere((x * 0.17, 1.7, -0.03), 0.12, "head", rainbow, mat="cloth", noise=(0.02, 25.0), k=0.03))
-        ch.add(sphere((0, 1.84, -0.04), 0.1, "head", rainbow, mat="cloth", noise=(0.02, 25.0), k=0.03))
+            puff = jig(s, "jig_puff%s_1" % ("l" if x < 0 else "r"), "head", (x * 0.1, 1.72, -0.03))
+            ch.add(sphere((x * 0.17, 1.7, -0.03), 0.12, puff, rainbow, mat="cloth", noise=(0.02, 25.0), k=0.03))
+        top = jig(s, "jig_pufft_1", "head", (0, 1.76, -0.04))
+        ch.add(sphere((0, 1.84, -0.04), 0.1, top, rainbow, mat="cloth", noise=(0.02, 25.0), k=0.03))
         ch.add(sphere((0, 1.645, 0.17), 0.05, "head", (0.95, 0.08, 0.08), mat="shiny", k=0.0))
         ch.add(capsule((-0.06, 1.592, 0.135), (0.06, 1.592, 0.135), 0.02, "head", (0.85, 0.1, 0.12), mat="shiny", k=0.0))
         # Ruffle collar, pom-pom buttons, enormous shoes.
@@ -341,7 +386,7 @@ def clown(s):
             ch.add(ellipsoid((x * 0.11, 0.07, 0.12), (0.09, 0.07, 0.26), f"foot_{side}", (0.9, 0.1, 0.1), mat="shiny", k=0.03))
         limb_shells(ch, s, suit, suit, arm_r=0.08, leg_r=0.11)
     return dict(cap=None, hair=None, backpack=False, face=(0.98, 0.97, 0.95), torso=suit, pockets=None, upper_arm=suit, cuff=None,
-                forearm=suit, hips=suit, belt=None, thigh=suit, shin=suit, boots=None, hands=WHITE, extra=extra, name="Clown")
+                forearm=suit, hips=suit, belt=None, thigh=suit, shin=suit, boots=None, hands=WHITE, arms_hidden=True, extra=extra, name="Clown")
 
 
 def tinfoil_tux(s):
@@ -353,8 +398,11 @@ def tinfoil_tux(s):
     def extra(ch, s):
         ch.add(capsule((0, 1.76, 0.0), (0, 2.18, -0.02), 0.165, "head", (0.82, 0.83, 0.86), rb=0.01, mat="metal", noise=(0.006, 45.0), k=0.01))
         ch.add(cylinder((0, 1.76, 0.0), (0, 1.775, 0.0), 0.17, "head", (0.82, 0.83, 0.86), mat="metal"))
-        ch.add(cylinder((0, 2.17, -0.02), (0, 2.3, -0.02), 0.005, "head", (0.7, 0.7, 0.72), mat="metal"))
-        ch.add(sphere((0, 2.31, -0.02), 0.015, "head", (0.9, 0.2, 0.2), mat="shiny", k=0.0))
+        a1 = jig(s, "jig_ant_1", "head", (0, 2.16, -0.02))
+        a2 = jig(s, "jig_ant_2", a1, (0, 2.26, -0.02))
+        ch.add(cylinder((0, 2.16, -0.02), (0, 2.26, -0.02), 0.005, a1, (0.7, 0.7, 0.72), mat="metal"))
+        ch.add(cylinder((0, 2.26, -0.02), (0, 2.36, -0.02), 0.004, a2, (0.7, 0.7, 0.72), mat="metal"))
+        ch.add(sphere((0, 2.37, -0.02), 0.016, a2, (0.9, 0.2, 0.2), mat="shiny", k=0.0))
         for x in (-1, 1):
             ch.add(ellipsoid((x * 0.035, 1.43, 0.11), (0.035, 0.022, 0.012), "chest", BLACK, mat="shiny", rot=(0, 0, x * 0.3), k=0.005))
             ch.add(ellipsoid((x * 0.09, 1.3, 0.115), (0.06, 0.13, 0.012), "chest", (0.12, 0.12, 0.14), mat="shiny", rot=(0, 0, x * 0.35), k=0.0))
@@ -378,11 +426,14 @@ def superfan(s):
     def extra(ch, s):
         # A giant foam toe hat, nail facing forward (like a cheesehead, but a toe). "TOE'S #1."
         ch.add(ellipsoid((0, 1.79, -0.01), (0.16, 0.08, 0.16), "head", pink, mat="cloth", k=0.03))
-        ch.add(capsule((0, 1.82, -0.02), (0, 2.18, 0.0), 0.12, "head", pink, rb=0.105, mat="cloth", k=0.05))
-        ch.add(ellipsoid((0, 2.14, 0.085), (0.075, 0.085, 0.03), "head", (0.99, 0.86, 0.86), mat="shiny", rot=(-0.2, 0, 0), k=0.0))
-        ch.add(ellipsoid((0, 2.21, 0.1), (0.07, 0.018, 0.02), "head", WHITE, mat="shiny", rot=(-0.2, 0, 0), k=0.0))
+        f1 = jig(s, "jig_toe_1", "head", (0, 1.84, -0.02))
+        f2 = jig(s, "jig_toe_2", f1, (0, 2.0, -0.01))
+        ch.add(capsule((0, 1.82, -0.02), (0, 2.02, -0.01), 0.12, f1, pink, rb=0.115, mat="cloth", k=0.05))
+        ch.add(capsule((0, 2.0, -0.01), (0, 2.18, 0.0), 0.115, f2, pink, rb=0.105, mat="cloth", k=0.05))
+        ch.add(ellipsoid((0, 2.14, 0.085), (0.075, 0.085, 0.03), f2, (0.99, 0.86, 0.86), mat="shiny", rot=(-0.2, 0, 0), k=0.0))
+        ch.add(ellipsoid((0, 2.21, 0.1), (0.07, 0.018, 0.02), f2, WHITE, mat="shiny", rot=(-0.2, 0, 0), k=0.0))
         for y in (1.95, 1.99):
-            ch.add(torus((0, y, 0.0), 0.118, 0.005, "head", (0.85, 0.55, 0.55), mat="cloth"))
+            ch.add(torus((0, y, 0.0), 0.118, 0.005, f1, (0.85, 0.55, 0.55), mat="cloth"))
         # Toe-pink wristbands.
         for side in ("l", "r"):
             el, h = J(s, f"elbow_{side}"), J(s, f"hand_{side}")
@@ -409,10 +460,15 @@ def shark(s):
             ch.add(ellipsoid(c, (0.014, 0.028, 0.012), "chest", WHITE, mat="shiny", rot=(0, 0, a + math.pi / 2), k=0.0))
         for x in (-1, 1):
             ch.add(sphere((x * 0.2, 1.9, 0.12), 0.03, "chest", BLACK, mat="shiny", k=0.0))
-            ch.add(ellipsoid((x * 0.28, 1.12, 0.02), (0.14, 0.025, 0.08), "spine", grey, mat="cloth", rot=(0, 0, x * -0.5), k=0.03))
-        ch.add(ellipsoid((0, 2.12, -0.12), (0.025, 0.17, 0.14), "chest", grey, mat="cloth", rot=(-0.6, 0, 0), k=0.04))
-        ch.add(capsule((0, 0.9, -0.22), (0, 0.55, -0.72), 0.16, "hips", grey, rb=0.05, mat="cloth", k=0.05))
-        ch.add(ellipsoid((0, 0.62, -0.78), (0.025, 0.2, 0.08), "hips", grey, mat="cloth", rot=(0.4, 0, 0), k=0.03))
+            fin = jig(s, "jig_fin%s_1" % ("l" if x < 0 else "r"), "spine", (x * 0.22, 1.14, 0.02))
+            ch.add(ellipsoid((x * 0.28, 1.12, 0.02), (0.14, 0.025, 0.08), fin, grey, mat="cloth", rot=(0, 0, x * -0.5), k=0.03))
+        dorsal = jig(s, "jig_dorsal_1", "chest", (0, 2.02, -0.12))
+        ch.add(ellipsoid((0, 2.12, -0.12), (0.025, 0.17, 0.14), dorsal, grey, mat="cloth", rot=(-0.6, 0, 0), k=0.04))
+        t1 = jig(s, "jig_tail_1", "hips", (0, 0.9, -0.22))
+        t2 = jig(s, "jig_tail_2", t1, (0, 0.72, -0.47))
+        ch.add(capsule((0, 0.9, -0.22), (0, 0.72, -0.47), 0.16, t1, grey, rb=0.1, mat="cloth", k=0.05))
+        ch.add(capsule((0, 0.72, -0.47), (0, 0.55, -0.72), 0.1, t2, grey, rb=0.05, mat="cloth", k=0.05))
+        ch.add(ellipsoid((0, 0.62, -0.78), (0.025, 0.2, 0.08), t2, grey, mat="cloth", rot=(0.4, 0, 0), k=0.03))
     return dict(cap=None, backpack=False, hair=None, torso=grey, pockets=None, upper_arm=grey, cuff=None, forearm=grey,
                 hips=grey, belt=None, thigh=grey, shin=grey, boots=(0.3, 0.33, 0.38), extra=extra, name="Shark Attack")
 

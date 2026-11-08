@@ -190,6 +190,7 @@ func _select(id: String) -> void:
 	_model = CharacterModel.load_model(Skins.model_path(id), 0.012)
 	_pivot.add_child(_model)
 	_model.play("idle")
+	Skins.add_springs(_model)
 
 
 func _on_action() -> void:

@@ -198,7 +198,7 @@ func _plan() -> void:
 	landmarks["methman_camp"] = Vector2(85, OVERPASS_Z + 1.5)
 	landmarks["tailgate"] = Vector2(-28.5, 5)
 	landmarks["park"] = PARK_MAIN.get_center() + Vector2(0, 9)
-	_keep_clear.append(Rect2(FOOTBRIDGE_X - 2.5, EW_ROADS[2] - STREET_HALF, 17.0, STREET_HALF * 2.0))
+	_keep_clear.append(Rect2(FOOTBRIDGE_X - 2.5, EW_ROADS[2] - STREET_HALF, FOOTBRIDGE_RUN + 6.0, STREET_HALF * 2.0))
 	_build_nav()
 
 
@@ -1019,6 +1019,7 @@ func _build_boutique(block: Rect2) -> void:
 		m.scale = Vector3.ONE * 0.92
 		m.rotation.y = rng.randf_range(-0.35, 0.35)
 		m.play("idle")
+		Skins.add_springs(m)
 	_reserved.append(Rect2(cx - 10.0, front.end.y + 3.0, 20.0, 10.0))
 
 
@@ -1389,35 +1390,60 @@ func _build_encampment() -> void:
 		hides.append({"pos": Vector2(c.x + spots[i].x, c.z + spots[i].z), "radius": 1.3})
 
 
-## A walkable footbridge over the z = 34 street: two ramps, a deck, railings, a sign.
+## A walkable footbridge over the z = 34 street: a deck across the road, a landing over each
+## sidewalk, and a long gentle ramp down along each sidewalk. Railings line the deck and the
+## landings' outer sides, never across the tops of the ramps.
+const FOOTBRIDGE_RUN:= 15.0
+
+
 func _build_footbridge() -> void:
 	var rz: float = EW_ROADS[2]
 	var x:= FOOTBRIDGE_X
 	var y:= FOOTBRIDGE_Y
 	var steel:= Color(0.2, 0.42, 0.55)
-	var lane:= ROAD_HALF + 1.05   # ramps run along the sidewalk, close to the curb
-	var deck_len:= lane * 2.0 + 2.0
-	_bx(Vector3(2.6, 0.25, deck_len), Vector3(x, y, rz), steel)
-	_solid(Vector3(2.6, 0.25, deck_len), Transform3D(Basis.IDENTITY, Vector3(x, y, rz)))
+	var rail_c:= steel.lightened(0.3)
+	var lane:= ROAD_HALF + 1.15   # ramps run along the sidewalk, close to the curb
+	var land_half:= 1.25          # landing half-size (z) over each sidewalk
+	var span_half:= lane - land_half
+	# Deck over the road (between the landings), with railings both sides.
+	_bx(Vector3(2.6, 0.25, span_half * 2.0), Vector3(x, y, rz), steel)
+	_solid(Vector3(2.6, 0.25, span_half * 2.0 + 0.1), Transform3D(Basis.IDENTITY, Vector3(x, y, rz)))
 	for s: float in [-1.0, 1.0]:
-		# Railings on the deck (solid, so you can't walk off the side).
-		_bx(Vector3(0.08, 1.1, deck_len), Vector3(x + s * 1.28, y + 0.65, rz), steel.lightened(0.3), "iron")
-		_solid(Vector3(0.12, 1.2, deck_len), Transform3D(Basis.IDENTITY, Vector3(x + s * 1.28, y + 0.7, rz)))
-		# Support legs at each end.
-		_bx(Vector3(0.5, y, 0.5), Vector3(x - 1.0, y * 0.5, rz + s * (lane + 0.6)), steel.darkened(0.2))
-		_bx(Vector3(0.5, y, 0.5), Vector3(x + 1.0, y * 0.5, rz + s * (lane + 0.6)), steel.darkened(0.2))
-		# A ramp down along the sidewalk from each end of the deck.
-		var run:= 11.0
+		_bx(Vector3(0.08, 1.1, span_half * 2.0), Vector3(x + s * 1.28, y + 0.65, rz), rail_c, "iron")
+		_solid(Vector3(0.12, 1.2, span_half * 2.0), Transform3D(Basis.IDENTITY, Vector3(x + s * 1.28, y + 0.7, rz)))
+	for s: float in [-1.0, 1.0]:
+		var zc:= rz + s * lane
+		# Landing: open on the ramp side (+x), railed on the far side and the outer edge.
+		_bx(Vector3(2.6, 0.25, land_half * 2.0), Vector3(x, y, zc), steel)
+		_solid(Vector3(2.6, 0.25, land_half * 2.0), Transform3D(Basis.IDENTITY, Vector3(x, y, zc)))
+		_bx(Vector3(0.08, 1.1, land_half * 2.0), Vector3(x - 1.28, y + 0.65, zc), rail_c, "iron")
+		_solid(Vector3(0.12, 1.2, land_half * 2.0), Transform3D(Basis.IDENTITY, Vector3(x - 1.28, y + 0.7, zc)))
+		_bx(Vector3(2.6, 1.1, 0.08), Vector3(x, y + 0.65, zc + s * land_half), rail_c, "iron")
+		_solid(Vector3(2.6, 1.2, 0.12), Transform3D(Basis.IDENTITY, Vector3(x, y + 0.7, zc + s * land_half)))
+		# Legs.
+		for lx: float in [-1.0, 1.0]:
+			_bx(Vector3(0.4, y, 0.4), Vector3(x + lx, y * 0.5, zc + s * (land_half - 0.3)), steel.darkened(0.2))
+		# The ramp: 15 m long, ~20 degrees, 2.3 m wide, from the landing's open side down to the
+		# sidewalk. Its top tucks under the landing edge so there's no lip to catch on.
+		var run:= FOOTBRIDGE_RUN
 		var ang:= atan2(y, run)
 		var length:= sqrt(run * run + y * y)
-		var zc:= rz + s * lane
-		var c:= Vector3(x + 1.3 + run * 0.5, y * 0.5 - 0.06, zc)
-		var b:= Basis(Vector3(0, 0, 1), -ang)   # high end at the deck, low end out along the sidewalk
-		_bx(Vector3(length, 0.2, 1.9), c, steel, "box", b)
-		_solid(Vector3(length, 0.2, 1.9), Transform3D(b, c))
+		var c:= Vector3(x + 1.3 + run * 0.5, y * 0.5 - 0.1, zc)
+		var b:= Basis(Vector3(0, 0, 1), -ang)   # high end at the landing, low end out along the sidewalk
+		_bx(Vector3(length + 0.3, 0.2, 2.3), c, steel, "box", b)
+		_solid(Vector3(length + 0.3, 0.2, 2.3), Transform3D(b, c))
+		# Ramp railings on both long sides, posts every couple of metres, and a few legs.
 		for side: float in [-1.0, 1.0]:
-			_bx(Vector3(length, 0.07, 0.07), c + Vector3(0, 1.0, side * 0.95), steel.lightened(0.3), "iron", b)
-		_bx(Vector3(2.6, 0.25, 2.2), Vector3(x, y, zc), steel)
+			_bx(Vector3(length, 0.07, 0.07), c + Vector3(0, 1.0, side * 1.15), rail_c, "iron", b)
+			_solid(Vector3(length, 1.0, 0.1), Transform3D(b, c + Vector3(0, 0.55, side * 1.18)))
+			var k:= 0.0
+			while k < length:
+				var pp:= c + b * Vector3(-length * 0.5 + k, 0.5, side * 1.15)
+				_bx(Vector3(0.05, 1.0, 0.05), pp, rail_c, "iron")
+				k += 2.0
+		for f: float in [0.25, 0.55, 0.8]:
+			var top:= c + b * Vector3(-length * 0.5 + length * f, 0, 0)
+			_bx(Vector3(0.25, top.y, 0.25), Vector3(top.x, top.y * 0.5, zc), steel.darkened(0.2))
 	# Advertising board on the side of the deck.
 	_bx(Vector3(0.1, 1.2, 9.0), Vector3(x - 1.4, y - 0.5, rz), Color(0.95, 0.85, 0.2))
 	var l:= _sign("SEEN SOMETHING? SNAP IT.", Vector3(x - 1.47, y - 0.5, rz), 70, Color(0.1, 0.08, 0.05), self, -PI * 0.5)
@@ -1560,10 +1586,7 @@ func _build_playground(r: Rect2) -> void:
 	# Sandpit and a dome climbing frame.
 	_bx(Vector3(4.0, 0.3, 4.0), Vector3(cx.x + 5.5, 0.15, cx.y + 4.5), Color(0.45, 0.3, 0.2), "wood")
 	_fl(Vector2(3.6, 3.6), Vector3(cx.x + 5.5, 0.31, cx.y + 4.5), Color(0.85, 0.75, 0.5))
-	for k in 8:
-		var a:= TAU * k / 8.0
-		_bx(Vector3(0.06, 2.6, 0.06), Vector3(cx.x + 0.5 + cos(a) * 0.9, 1.1, cx.y + 6.5 + sin(a) * 0.9), red, "iron",
-			Basis(Vector3(-sin(a), 0, cos(a)), 0.55))
+	_jungle_gym(Vector3(cx.x - 0.5, 0, cx.y + 6.2))
 	for k in 3:
 		var bench_x:= cx.x - 9.0 + k * 9.0
 		_bench(Vector3(bench_x, 0, r.end.y - 4.0), 0.0)
@@ -1571,6 +1594,57 @@ func _build_playground(r: Rect2) -> void:
 	_hedge_border(r)
 	for corner: Vector2 in [Vector2(r.position.x + 1.5, r.position.y + 1.5), Vector2(r.end.x - 1.5, r.end.y - 1.5)]:
 		_lamp_spots.append(Vector3(corner.x, 0, corner.y))
+
+
+## A proper climbing frame: two ladder towers joined by monkey bars, a cube of bars to
+## clamber through on one side, a fireman's pole off the other tower. Solid to walk into.
+func _jungle_gym(at: Vector3) -> void:
+	var red:= Color(0.85, 0.2, 0.15)
+	var yel:= Color(0.95, 0.78, 0.15)
+	var blue:= Color(0.2, 0.42, 0.85)
+	var h:= 2.1
+	var tw:= 0.9                 # tower width (z)
+	var towers: Array[Vector3] = [at + Vector3(-1.6, 0, 0), at + Vector3(1.6, 0, 0)]
+	var horiz_x:= Basis(Vector3.FORWARD, PI * 0.5)    # cylinder lying along x
+	var horiz_z:= Basis(Vector3.RIGHT, PI * 0.5)      # cylinder lying along z
+	for t: Vector3 in towers:
+		# Four corner posts and a little platform with a rail.
+		for dx: float in [-0.45, 0.45]:
+			for dz: float in [-tw * 0.5, tw * 0.5]:
+				_cy(0.05, h + 0.7, t + Vector3(dx, (h + 0.7) * 0.5, dz), red, "iron")
+		_bx(Vector3(0.95, 0.06, tw + 0.05), t + Vector3(0, h * 0.62, 0), Color(0.55, 0.4, 0.25), "wood")
+		for dz: float in [-tw * 0.5, tw * 0.5]:
+			_cy(0.03, 0.95, t + Vector3(0, h + 0.55, dz), yel, "iron", horiz_x)
+		# Ladder rungs up the outer side.
+		var out:= signf(t.x - at.x)
+		for k in 5:
+			_cy(0.025, tw, t + Vector3(out * 0.45, 0.3 + k * 0.3, 0), yel, "iron", horiz_z)
+		_solid(Vector3(1.0, h + 0.7, tw + 0.1), Transform3D(Basis.IDENTITY, t + Vector3(0, (h + 0.7) * 0.5, 0)), true)
+	# Monkey bars between the towers: two side rails and rungs every 30 cm.
+	var span:= towers[1].x - towers[0].x - 0.9
+	var mid:= (towers[0] + towers[1]) * 0.5
+	for dz: float in [-tw * 0.5, tw * 0.5]:
+		_cy(0.04, span, mid + Vector3(0, h, dz), blue, "iron", horiz_x)
+	var x:= -span * 0.5 + 0.15
+	while x < span * 0.5:
+		_cy(0.022, tw, mid + Vector3(x, h, 0), yel, "iron", horiz_z)
+		x += 0.3
+	# Cube climber off the front: a 3 x 2 x 2 grid of bars.
+	var cube:= mid + Vector3(-0.6, 0, tw * 0.5 + 0.6)
+	var n:= 0.6
+	for i in 4:
+		for j in 3:
+			_cy(0.03, 1.2, cube + Vector3(i * n - 0.9, 0.6, j * n - 0.6), red, "iron")
+	for lvl in 3:
+		var y:= 0.05 + lvl * 0.575
+		for j in 3:
+			_cy(0.025, 1.8, cube + Vector3(0, y, j * n - 0.6), blue, "iron", horiz_x)
+		for i in 4:
+			_cy(0.025, 1.2, cube + Vector3(i * n - 0.9, y, 0), blue, "iron", horiz_z)
+	# Fireman's pole down from the right tower.
+	var pole:= towers[1] + Vector3(0.95, 0, 0)
+	_cy(0.035, h + 0.6, pole + Vector3(0, (h + 0.6) * 0.5, 0), Color(0.8, 0.8, 0.82), "chrome")
+	_cy(0.03, 0.5, pole + Vector3(-0.25, h + 0.55, 0), Color(0.8, 0.8, 0.82), "chrome", horiz_x)
 
 
 func _add_trees(xfs: Array[Transform3D]) -> void:

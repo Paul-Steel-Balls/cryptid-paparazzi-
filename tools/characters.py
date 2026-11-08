@@ -92,10 +92,12 @@ def photographer(skin="default"):
     # arms (sleeves rolled to the elbow)
     for side, x in (("l", -1), ("r", 1)):
         sh = np.array(s.heads[s.idx(f"shoulder_{side}")]); el = np.array(s.heads[s.idx(f"elbow_{side}")]); hd = np.array(s.heads[s.idx(f"hand_{side}")])
-        ch.add(capsule(sh, el, 0.058, f"shoulder_{side}", L["upper_arm"], rb=0.05, k=0.03))
-        if L["cuff"] is not None:
-            ch.add(torus(el + np.array([0, 0.01, 0]), 0.048, 0.016, f"elbow_{side}", L["cuff"], k=0.01))
-        ch.add(capsule(el, hd, 0.045, f"elbow_{side}", L["forearm"], rb=0.038, k=0.02))
+        # (Outfits with their own baggy sleeves leave the arms underneath out, so no shirt pokes through.)
+        if not L.get("arms_hidden", False):
+            ch.add(capsule(sh, el, 0.058, f"shoulder_{side}", L["upper_arm"], rb=0.05, k=0.03))
+            if L["cuff"] is not None:
+                ch.add(torus(el + np.array([0, 0.01, 0]), 0.048, 0.016, f"elbow_{side}", L["cuff"], k=0.01))
+            ch.add(capsule(el, hd, 0.045, f"elbow_{side}", L["forearm"], rb=0.038, k=0.02))
         hand(ch, f"hand_{side}", hd + np.array([0, -0.05, 0.0]), 0.045, L["hands"], side=-x)
         # legs
         hp = np.array(s.heads[s.idx(f"hip_{side}")]); kn = np.array(s.heads[s.idx(f"knee_{side}")]); ft = np.array(s.heads[s.idx(f"foot_{side}")])

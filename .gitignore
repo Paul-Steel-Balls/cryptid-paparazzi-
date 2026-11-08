@@ -2,7 +2,6 @@
 *.import
 /android/
 __pycache__/
+/preview/
 keys/
 *.keystore
-/build/
-*.exe
