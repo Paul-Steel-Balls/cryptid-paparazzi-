@@ -156,7 +156,74 @@ def photographer(skin="default"):
                 "head": (0.05 + 0.04 * math.sin(ph * 2.0), 0.15 * math.sin(ph * 0.5), 0),
                 "_hips_offset": (0, -0.43 + 0.006 * math.sin(ph * 8.0), -0.05)}
     ch.anim("drive", 4.0, drive)
+    _emotes(ch)
     return ch
+
+
+def _emotes(ch):
+    """Emote wheel animations (emote_<id>). The camera stays slung on the chest strap; arms are free.
+    Convention here: shoulder x<0 swings the arm forward, right arm z>0 / left arm z<0 lifts it out
+    to the side; elbow x<0 bends the forearm up/forward."""
+    S = math.sin; C = math.cos
+    rest = {"shoulder_l": (0.05, 0, -0.12), "shoulder_r": (0.05, 0, 0.12), "elbow_l": (-0.15, 0, 0), "elbow_r": (-0.15, 0, 0)}
+    def with_rest(fn):
+        return lambda t: {**rest, **fn(t)}
+    # Wave: right arm up high, hand waving side to side, head tilted, friendly.
+    ch.anim("emote_wave", 2.4, with_rest(lambda t: {
+        "shoulder_r": (-0.2, 0, 2.5), "elbow_r": (0, 0, 0.35 + 0.45 * S(2 * PI * t / 0.5)),
+        "head": (0, 0.1, -0.12), "chest": (0, 0.05, -0.04 * S(2 * PI * t / 0.5))}))
+    # Thumbs up: arm out front, forearm up, a couple of nods.
+    ch.anim("emote_thumbs", 2.0, with_rest(lambda t: {
+        "shoulder_r": (-1.2, 0, -0.15), "elbow_r": (-1.1, 0, 0), "head": (0.12 * max(0.0, S(2 * PI * t / 0.7)), 0, 0),
+        "chest": (-0.05, 0, 0)}))
+    # Point and laugh: right arm pointing, left hand on the belly, doubled over cackling.
+    ch.anim("emote_laugh", 2.8, with_rest(lambda t: {
+        "shoulder_r": (-1.45, 0, 0.05), "elbow_r": (-0.1, 0, 0),
+        "shoulder_l": (-0.5, 0, 0.35), "elbow_l": (-1.7, 0, 0),
+        "spine": (0.12 + 0.12 * abs(S(2 * PI * t / 0.36)), 0, 0), "head": (-0.35 + 0.1 * S(2 * PI * t / 0.36), 0, 0),
+        "_hips_offset": (0, -0.02 * abs(S(2 * PI * t / 0.36)), 0)}))
+    # Facepalm: hand to the face, head down, slow shake.
+    ch.anim("emote_facepalm", 2.6, with_rest(lambda t: {
+        "shoulder_r": (-1.35, 0, -0.55), "elbow_r": (-2.25, 0.25, 0), "head": (0.4, 0.15 * S(2 * PI * t / 1.3), 0),
+        "neck": (0.15, 0, 0), "chest": (0.1, 0, 0), "spine": (0.08, 0, 0)}))
+    # Flex: double biceps, puffing up and pulsing.
+    def flex(t):
+        p = 0.12 * S(2 * PI * t / 0.6)
+        return {"shoulder_l": (0, 0, -1.45), "shoulder_r": (0, 0, 1.45), "elbow_l": (0, 0, -1.5 - p), "elbow_r": (0, 0, 1.5 + p),
+                "chest": (-0.12, 0, 0), "head": (-0.12, 0.2 * S(2 * PI * t / 2.4), 0), "_hips_offset": (0, 0.01 * S(2 * PI * t / 0.6), 0)}
+    ch.anim("emote_flex", 2.4, flex)
+    # Chicken dance: flapping elbows, pecking head, bouncing knees.
+    def chicken(t):
+        f = 0.5 + 0.5 * S(2 * PI * t / 0.5)
+        k = abs(S(2 * PI * t / 1.0))
+        return {"shoulder_l": (-0.2, 0, -0.35 - 0.7 * f), "shoulder_r": (-0.2, 0, 0.35 + 0.7 * f),
+                "elbow_l": (-2.3, 0, 0), "elbow_r": (-2.3, 0, 0),
+                "head": (0.35 * max(0.0, S(2 * PI * t / 0.5)), 0, 0), "neck": (0.1, 0, 0),
+                "hip_l": (-0.35 * k, 0, -0.05), "hip_r": (-0.35 * k, 0, 0.05), "knee_l": (0.7 * k, 0, 0), "knee_r": (0.7 * k, 0, 0),
+                "foot_l": (-0.35 * k, 0, 0), "foot_r": (-0.35 * k, 0, 0), "spine": (0.15, 0, 0),
+                "_hips_offset": (0, -0.08 * k, 0)}
+    ch.anim("emote_chicken", 2.0, chicken)
+    # Disco: point up to one corner, then down across; hips swaying, knees alternating.
+    def disco(t):
+        ph = 2 * PI * t / 1.0
+        up = 0.5 + 0.5 * S(ph)
+        sway = S(ph)
+        return {"shoulder_r": (-0.4 * (1 - up), 0, 2.6 * up - 0.5 * (1 - up)), "elbow_r": (-0.1, 0, 0),
+                "shoulder_l": (-0.2, 0, -0.25), "elbow_l": (-1.6, 0, 0), "hips": (0, 0.2 * sway, 0.08 * sway),
+                "spine": (0, -0.15 * sway, -0.06 * sway), "head": (0, 0.2 * sway, 0.1 * up),
+                "hip_l": (-0.3 * max(0.0, sway), 0, -0.05), "hip_r": (-0.3 * max(0.0, -sway), 0, 0.05),
+                "knee_l": (0.6 * max(0.0, sway), 0, 0), "knee_r": (0.6 * max(0.0, -sway), 0, 0),
+                "_hips_offset": (0.04 * sway, -0.03 * abs(sway), 0)}
+    ch.anim("emote_disco", 2.0, disco)
+    # Dizzy: arms out for balance, head lolling round, swaying and stumbling on the spot.
+    def dizzy(t):
+        ph = 2 * PI * t / 1.6
+        return {"shoulder_l": (0, 0, -1.0 - 0.3 * S(ph)), "shoulder_r": (0, 0, 1.0 - 0.3 * S(ph)),
+                "elbow_l": (-0.3, 0, -0.3 * S(ph * 2)), "elbow_r": (-0.3, 0, 0.3 * S(ph * 2)),
+                "head": (0.2 * S(ph), 0.3 * C(ph), 0.25 * S(ph)), "spine": (0.08, 0, 0.18 * S(ph)),
+                "hip_l": (-0.2 * max(0.0, S(ph)), 0, -0.1), "hip_r": (-0.2 * max(0.0, -S(ph)), 0, 0.1),
+                "knee_l": (0.35, 0, 0), "knee_r": (0.35, 0, 0), "_hips_offset": (0.07 * S(ph), -0.04, 0)}
+    ch.anim("emote_dizzy", 3.2, dizzy)
 
 # =============================================================================== shared biped helpers
 def H(s, name): return np.array(s.heads[s.idx(name)], float)

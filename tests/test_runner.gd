@@ -62,6 +62,7 @@ func _ready() -> void:
 	await _test_v017()
 	await _test_v018()
 	await _test_v019()
+	await _test_v020()
 	print("RESULT: %d/%d checks passed" % [_passed, _passed + _failed])
 	if _failed > 0:
 		get_tree().quit(1)
@@ -2179,6 +2180,136 @@ func _test_v019() -> void:
 	var rows:= (pm.get("_ach_list") as VBoxContainer).get_child_count()
 	_check("v019: achievements page lists them all", rows >= 19 + 3)
 	_check("v019: achievements never write a file in tests", not FileAccess.file_exists(Achievements.PATH) or Achievements.saving_enabled == false)
+	main_node.free()
+	Achievements.clear()
+	GameState.reset()
+
+
+
+func _test_v020() -> void:
+	GameState.reset()
+	Achievements.clear()
+	var main_node: Node = (load("res://main.tscn") as PackedScene).instantiate()
+	add_child(main_node)
+	await get_tree().process_frame
+	var mp: Player = main_node.get("_player")
+	var hud: HUD = main_node.get("_hud")
+	# Flash: the white holds a moment before clearing; the blur is heavier.
+	main_node.call("flashed_by_tourist_remote", 1.5)
+	hud.call("_process", 0.25)
+	_check("v020: flash stays fully white for a moment", is_equal_approx((hud.get("_flash_rect") as ColorRect).modulate.a, 1.0))
+	hud.call("_process", 0.3)
+	hud.call("_process", 0.3)
+	_check("v020: ...then starts to clear", (hud.get("_flash_rect") as ColorRect).modulate.a < 1.0)
+	_check("v020: blur still at full strength a second in", float((hud.get("_blur_mat") as ShaderMaterial).get_shader_parameter("strength")) > 0.99)
+	hud.call("_process", 5.0)
+	mp.set("_stun_timer", 0.0)
+	# Zoom lens
+	mp.set_aiming(true)
+	mp.zoom_by(0.5)
+	_check("v020: no lens -> no zoom", is_equal_approx(mp.zoom, 1.0))
+	GameState.owned_items.append("zoom_lens")
+	for i in 15:
+		mp.zoom_by(0.1)
+	_check("v020: lens zooms in steps up to 2x", is_equal_approx(mp.zoom, 2.0))
+	for i in 20:
+		mp.call("_process", 0.1)
+	_check("v020: zoomed viewfinder is narrower", mp.get("_camera").fov < 30.0)
+	mp.set_aiming(false)
+	mp.call("_process", 0.016)
+	_check("v020: lowering the camera resets the zoom", is_equal_approx(mp.zoom, 1.0))
+	var far:= PhotoScoring.evaluate(Vector3(0, 0, -40), Vector3(0, 0, 1), Vector3.ZERO, Vector3(0, 0, -1), PhotoScoring.CryptidState.WANDER)
+	var far2:= PhotoScoring.evaluate(Vector3(0, 0, -40), Vector3(0, 0, 1), Vector3.ZERO, Vector3(0, 0, -1), PhotoScoring.CryptidState.WANDER, 2.0)
+	var mid:= PhotoScoring.evaluate(Vector3(0, 0, -20), Vector3(0, 0, 1), Vector3.ZERO, Vector3(0, 0, -1), PhotoScoring.CryptidState.WANDER)
+	_check("v020: 40 m is too far without zoom, fine at 2x", not far["in_frame"] and far2["in_frame"])
+	_check("v020: 40 m at 2x scores like 20 m", int(far2["score"]) == int(mid["score"]))
+	var side:= PhotoScoring.evaluate(Vector3(-10, 0, -15), Vector3(0, 0, 1), Vector3.ZERO, Vector3(0, 0, -1), PhotoScoring.CryptidState.WANDER, 2.0)
+	_check("v020: zooming narrows the frame", not side["in_frame"])
+	GameState.owned_items.erase("zoom_lens")
+	# Every shot develops, even with no cryptid in it.
+	GameState.unsold_photos.clear()
+	GameState.film = 6
+	mp.set("_snap_cooldown", 0.0)
+	mp.cryptids = []
+	mp.set_aiming(true)
+	mp.snap_photo()
+	_check("v020: a shot with no cryptid still goes to the darkroom", GameState.unsold_photos.size() == 1 and int(GameState.unsold_photos[0]["value"]) == 0 and (GameState.unsold_photos[0]["species"] as Array).is_empty())
+	_check("v020: its print says no cryptids", str(main_node.call("_print_caption", GameState.unsold_photos[0], false)) == "No cryptids")
+	_check("v020: book caption says where and when", str(main_node.call("_print_caption", {"species": ["bigboobs"], "value": 40, "map": "woods", "night": 3}, true)).contains("night 3"))
+	mp.set_aiming(false)
+	GameState.unsold_photos.clear()
+	# Photo book
+	Photobook.dir = "user://test_photobook/"
+	Photobook.clear_all()
+	var img:= Image.create(32, 24, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.8, 0.2, 0.2))
+	var tex:= ImageTexture.create_from_image(img)
+	GameState.recent_prints = [{"tex": tex, "caption": "Bigboobs — Deep Woods, night 2"}]
+	var pb: PhotobookUI = main_node.get("_photobook")
+	_check("v020: pasting a fresh print into the book", pb.paste(0) and Photobook.count() == 1 and GameState.recent_prints.is_empty())
+	Photobook._loaded_from = ""   # forget the cache: read it back off disk
+	var e: Dictionary = Photobook.entries()[0]
+	var back:= Photobook.texture(str(e["id"]))
+	_check("v020: the book keeps the photo on disk", back != null and back.get_width() == 32 and str(e["caption"]).contains("Deep Woods"))
+	Photobook.remove(str(e["id"]))
+	_check("v020: taking a photo out", Photobook.count() == 0)
+	var interior: RVInterior = main_node.get("_interior")
+	_check("v020: the photo book sits in the RV", interior.hotspots.has("photobook"))
+	Photobook.clear_all()
+	Photobook.dir = "user://photobook/"
+	# Emotes
+	var ems:= Catalog.emotes()
+	_check("v020: 8 emotes on the wheel", ems.size() == 8)
+	_check("v020: wave and thumbs up are free", Catalog.owned("emote_wave") and Catalog.owned("emote_thumbs"))
+	_check("v020: the rest start locked", not Catalog.owned("emote_disco") and not Catalog.owned("emote_dizzy"))
+	_check("v020: emotes aren't sold if free or earned", not Catalog.in_stock("emote_wave") and not Catalog.in_stock("emote_dizzy") and Catalog.in_stock("emote_disco"))
+	var locked_hits:= []
+	mp.emote_locked.connect(func(id: String): locked_hits.append(id))
+	_check("v020: a locked emote won't play", not mp.start_emote("emote_disco") and locked_hits == ["emote_disco"] and mp.emote == "")
+	Achievements.unlock("seeing_spots")
+	_check("v020: Seeing Spots unlocks Seeing Stars", Catalog.owned("emote_dizzy"))
+	GameState.money = 1000
+	_check("v020: buy an emote at the stand", GameState.buy_decor("emote_disco") and Catalog.owned("emote_disco") and GameState.money == 600)
+	mp.set_third_person(false)
+	_check("v020: emoting swings to third person", mp.start_emote("emote_disco") and mp.third_person)
+	_check("v020: other players see the emote", str(mp.net_state()[4]) == "emote_disco")
+	Input.action_press("move_forward")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	Input.action_release("move_forward")
+	_check("v020: moving stops the emote and goes back to first person", mp.emote == "" and not mp.third_person)
+	mp.start_emote("emote_wave")
+	for i in 30:
+		mp.call("_tick_emote", 0.1)
+	_check("v020: a one-off emote ends by itself", mp.emote == "")
+	mp.open_emote_wheel()
+	mp.call("_wheel_pick", Vector2(0, -100))
+	_check("v020: mouse up picks the top slot", int(mp.get("_wheel_sel")) == 0)
+	mp.call("_wheel_pick", Vector2(200, 100))
+	_check("v020: mouse right picks the 3 o'clock slot", int(mp.get("_wheel_sel")) == 2)
+	_check("v020: the wheel shows on screen", (hud.get("_wheel") as Control).visible)
+	mp.close_emote_wheel(true)
+	_check("v020: letting go on a locked one doesn't play it", mp.emote == "" and not (hud.get("_wheel") as Control).visible and locked_hits.size() == 2)
+	mp.open_emote_wheel()
+	mp.call("_wheel_pick", Vector2(100, -100))
+	mp.close_emote_wheel(true)
+	_check("v020: letting go plays the picked emote", mp.emote == str(ems[1]))
+	mp.stop_emote()
+	var model: CharacterModel = CharacterModel.load_model("res://models/photographer.glb", 0.0)
+	var outfit: CharacterModel = CharacterModel.load_model("res://models/photographer_trex.glb", 0.0)
+	var all_anims:= true
+	for id in ems:
+		all_anims = all_anims and model.anim_player.has_animation(str(id)) and outfit.anim_player.has_animation(str(id))
+	_check("v020: every emote is animated, outfits too", all_anims)
+	model.free()
+	outfit.free()
+	var shop: ShopUI = main_node.get("_shop_ui")
+	shop.open()
+	shop.call("_show_tab", "emote")
+	_check("v020: the stand has an EMOTES tab", shop._buttons.size() == 8)
+	shop.call("_show_tab", "upgrade")
+	_check("v020: ...and a CAMERA tab with the zoom lens", shop._buttons.has("zoom_lens"))
+	shop.close()
 	main_node.free()
 	Achievements.clear()
 	GameState.reset()

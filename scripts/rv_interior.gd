@@ -460,6 +460,11 @@ func _build_dinette() -> void:
 		var back:= 1.0 if bx > 2.0 else -1.0
 		_box(Vector3(0.5, 0.45, 1.0), Vector3(bx, 0.23, z), vinyl)
 		_box(Vector3(0.12, 0.6, 1.0), Vector3(bx + back * 0.22, 0.75, z), vinyl, false)
+	# the photo book: a fat scrapbook with a red cover
+	_box(Vector3(0.34, 0.07, 0.26), Vector3(2.05, 0.8, z + 0.1), _mat(Color(0.65, 0.12, 0.1), 0.7), false)
+	_box(Vector3(0.32, 0.055, 0.245), Vector3(2.06, 0.8, z + 0.1), _mat(Color(0.95, 0.93, 0.85), 0.9), false)
+	_box(Vector3(0.12, 0.004, 0.08), Vector3(2.05, 0.837, z + 0.1), _mat(Color(0.95, 0.85, 0.5), 0.5), false)
+	hotspots["photobook"] = {"pos": Vector3(2.05, 0.9, z + 0.1), "label": "Photo book — keep your best shots"}
 	# a mug and a deck of cards for atmosphere
 	_box(Vector3(0.08, 0.1, 0.08), Vector3(1.85, 0.82, z - 0.2), _mat(Color(0.85, 0.2, 0.15)), false)
 	_box(Vector3(0.09, 0.03, 0.13), Vector3(2.1, 0.785, z + 0.15), _mat(Color(0.9, 0.9, 0.95)), false)

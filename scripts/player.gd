@@ -148,6 +148,24 @@ func _input(event: InputEvent) -> void:
 		is_touch = true
 	if controls_locked or GameState.menu_open:
 		return
+	if event.is_action_pressed("emote_wheel"):
+		open_emote_wheel()
+		return
+	if event.is_action_released("emote_wheel") and _wheel_open:
+		close_emote_wheel(true)
+		return
+	if _wheel_open:
+		if event is InputEventMouseMotion:
+			_wheel_pick(event.relative)
+		elif event.is_action_pressed("snap"):
+			close_emote_wheel(true)
+		return
+	if emote != "" and event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		# Emoting: the mouse swings the camera round you, it doesn't turn you.
+		_emote_orbit -= event.relative.x * look_sens
+		_pitch = clampf(_pitch - event.relative.y * look_sens, deg_to_rad(-60.0), deg_to_rad(40.0))
+		_apply_look()
+		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var sens:= look_sens * float(GameState.settings.get("sensitivity", 1.0)) * (0.6 if aiming else 1.0)
 		_yaw -= event.relative.x * sens
@@ -163,6 +181,9 @@ func _input(event: InputEvent) -> void:
 				snap_photo()
 			else:
 				need_aim.emit()
+		elif aiming and event is InputEventMouseButton and event.pressed and \
+				(event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+			zoom_by(0.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -0.1)
 	if event.is_action_pressed("sprint") and bool(GameState.settings.get("toggle_sprint", false)):
 		_sprint_latched = not _sprint_latched
 	if event.is_action_pressed("toggle_view"):
@@ -229,6 +250,8 @@ func _physics_process(delta: float) -> void:
 		strafe = 0.0
 		sprinting = false
 		_jump_request = false
+	if emote != "" and (absf(fwd) + absf(strafe) > 0.1 or _jump_request):
+		stop_emote()
 	if _stun_timer > 0.0:
 		# Flashed: you can stumble about half-speed, but can't sprint, jump or aim.
 		fwd *= 0.5
@@ -346,8 +369,12 @@ func _process(delta: float) -> void:
 	# Raising the camera: zoom in, arms bring it up to the eye, then you're looking through it.
 	_aim_t = move_toward(_aim_t, 1.0 if aiming else 0.0, delta * 6.0)
 	var e:= _aim_t * _aim_t * (3.0 - 2.0 * _aim_t)
-	_camera.fov = lerpf(75.0, 50.0, e)
+	if not aiming:
+		zoom = 1.0
+	_zoom_shown = lerpf(_zoom_shown, zoom, clampf(delta * 12.0, 0.0, 1.0))
+	_camera.fov = rad_to_deg(2.0 * atan(tan(deg_to_rad(lerpf(75.0, 50.0, e)) * 0.5) / _zoom_shown))
 	_snap_kick = maxf(0.0, _snap_kick - delta * 3.5)
+	_tick_emote(delta)
 	_shake = maxf(0.0, _shake - delta * 2.0)
 	if _flash_light:
 		_flash_light.light_energy = maxf(0.0, _flash_light.light_energy - delta * 60.0)
@@ -437,9 +464,110 @@ func _step_sound(sprinting: bool) -> String:
 	return "run" if sprinting else "step"
 
 
+# --------------------------------------------------------------- emotes
+
+signal emote_wheel_changed(open: bool, sel: int)
+signal emote_locked(id: String)
+var emote:= ""                 # the emote playing ("emote_wave"...), or ""
+var _emote_t:= 0.0
+var _emote_was_fp:= false
+var _emote_orbit:= 0.0
+var _wheel_open:= false
+var _wheel_vec:= Vector2.ZERO
+var _wheel_sel:= -1
+
+
+func open_emote_wheel() -> void:
+	if controls_locked or GameState.game_over or GameState.menu_open:
+		return
+	set_aiming(false)
+	_wheel_open = true
+	_wheel_vec = Vector2.ZERO
+	_wheel_sel = -1
+	emote_wheel_changed.emit(true, -1)
+
+
+func close_emote_wheel(play: bool) -> void:
+	if not _wheel_open:
+		return
+	_wheel_open = false
+	emote_wheel_changed.emit(false, -1)
+	var list:= Catalog.emotes()
+	if play and _wheel_sel >= 0 and _wheel_sel < list.size():
+		start_emote(str(list[_wheel_sel]))
+
+
+## Mouse movement picks a slot: slot 0 straight up, then clockwise.
+func _wheel_pick(rel: Vector2) -> void:
+	_wheel_vec = (_wheel_vec + rel).limit_length(160.0)
+	var n:= Catalog.emotes().size()
+	if _wheel_vec.length() < 35.0 or n == 0:
+		return
+	var ang:= fposmod(atan2(_wheel_vec.x, -_wheel_vec.y), TAU)
+	var sel:= int(round(ang / (TAU / n))) % n
+	if sel != _wheel_sel:
+		_wheel_sel = sel
+		emote_wheel_changed.emit(true, sel)
+
+
+func start_emote(id: String) -> bool:
+	if GameState.game_over or controls_locked:
+		return false
+	if not Catalog.owned(id):
+		emote_locked.emit(id)
+		return false
+	set_aiming(false)
+	emote = id
+	_emote_t = 0.0
+	_emote_orbit = 0.0
+	if not third_person and not indoors:   # (no room for the camera boom inside the RV)
+		_emote_was_fp = true
+		set_third_person(true)
+	_apply_look()
+	return true
+
+
+func stop_emote() -> void:
+	if emote == "":
+		return
+	emote = ""
+	if _emote_was_fp:
+		_emote_was_fp = false
+		set_third_person(false)
+	_apply_look()
+
+
+func _tick_emote(delta: float) -> void:
+	if emote == "":
+		return
+	_emote_t += delta
+	var len:= float(Catalog.item(emote).get("len", 0.0))
+	if len > 0.0 and _emote_t >= len:
+		stop_emote()
+
+
+## Zoom lens: 1x-2x while looking through the viewfinder (only if you own the lens).
+const MAX_ZOOM:= 2.0
+var zoom:= 1.0
+var _zoom_shown:= 1.0
+signal zoom_changed(z: float)
+
+func zoom_by(step: float) -> void:
+	if not aiming or not Catalog.owned("zoom_lens"):
+		return
+	var z:= clampf(snappedf(zoom + step, 0.1), 1.0, MAX_ZOOM)
+	if z != zoom:
+		zoom = z
+		zoom_changed.emit(zoom)
+		if is_inside_tree():
+			Audio.play("dry_click", -22.0, 0.15)
+
+
 func set_aiming(on: bool) -> void:
 	if (controls_locked or _stun_timer > 0.0) and on:
 		return
+	if on:
+		stop_emote()
 	if aiming == on:
 		return
 	aiming = on
@@ -585,6 +713,7 @@ func _update_crouch(delta: float) -> void:
 
 
 func toggle_view() -> void:
+	_emote_was_fp = false
 	if indoors or controls_locked:
 		return   # no room to swing a camera boom in the RV
 	set_third_person(not third_person)
@@ -649,9 +778,11 @@ func snap_photo() -> void:
 	if result.get("in_frame", false) and is_inebriated():
 		result["value"] = int(result["value"]) / 2
 		result["reason"] = str(result["reason"]) + "  (shaky: half pay)"
-	if result.get("in_frame", false):
-		GameState.unsold_photos.append({"value": int(result["value"]), "quality": str(result["reason"]),
-			"species": result["species_list"], "scores": result.get("scores", {}), "map": GameState.current_map})
+	# Every shot goes to the darkroom; one with no cryptid in it just pays nothing.
+	var hit: bool = result.get("in_frame", false)
+	GameState.unsold_photos.append({"value": int(result["value"]) if hit else 0, "quality": str(result["reason"]),
+		"species": result["species_list"] if hit else [], "scores": result.get("scores", {}) if hit else {},
+		"map": GameState.current_map, "night": GameState.night})
 	photo_taken.emit(result)
 
 
@@ -695,7 +826,7 @@ func evaluate_from(eye: Vector3, dir: Vector3, up_close: bool = false, exclude: 
 	var raw: Dictionary = {}
 	var best_value:= -1.0
 	for c in _all_cryptids():
-		var r:= PhotoScoring.evaluate(c.photo_point(), c.get_facing(), ray[0], ray[1], c.state)
+		var r:= PhotoScoring.evaluate(c.photo_point(), c.get_facing(), ray[0], ray[1], c.state, zoom if not up_close else 1.0)
 		if not r.get("in_frame", false):
 			if best_value < 0.0 and str(r.get("reason", "")) != "Cryptid not in frame":
 				best["reason"] = r["reason"]
@@ -843,7 +974,9 @@ func first_person_camera() -> Camera3D:
 func net_state() -> Array:
 	var hspeed:= Vector2(velocity.x, velocity.z).length()
 	var anim:= "idle"
-	if not is_on_floor() and _air_time > 0.08 and not indoors:
+	if emote != "":
+		anim = emote
+	elif not is_on_floor() and _air_time > 0.08 and not indoors:
 		anim = "jump"
 	elif _snap_kick > 0.4:
 		anim = "snap"
@@ -862,6 +995,8 @@ func _apply_look() -> void:
 	_camera.rotation.x = _pitch
 	if _tp_pivot:
 		_tp_pivot.rotation.x = clampf(_pitch, deg_to_rad(-70.0), deg_to_rad(45.0))
+		# Emoting: the camera swings round to look at you from the front.
+		_tp_pivot.rotation.y = (PI + _body_yaw + _emote_orbit) if emote != "" else 0.0
 
 
 # ------------------------------------------------------------- visuals
@@ -1120,6 +1255,8 @@ func _animate_body() -> void:
 	var hspeed:= Vector2(velocity.x, velocity.z).length()
 	if not is_on_floor() and _air_time > 0.08 and not indoors:
 		_body_model.play("jump", 1.0, 0.1)
+	elif emote != "":
+		_body_model.play(emote, 1.0, 0.25)
 	elif _snap_kick > 0.4:
 		_body_model.play("snap", 1.0, 0.05)
 	elif _crouch_t > 0.5:

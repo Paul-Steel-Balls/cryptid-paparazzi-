@@ -18,6 +18,19 @@ const ITEMS:= {
 		"blurb": "Q to light up. For about 12 seconds the world slows right down. Photos taken high pay half (shaky hands)."},
 	"beer": {"kind": "gear", "name": "BEER", "price": 150, "key": 5,
 		"blurb": "Q to crack one. Faster legs for 25 seconds, but louder, and photos taken buzzed pay half."},
+	# Emotes: hold B for the emote wheel. "free": everyone has it; "achievement": earned, not bought.
+	# "len": seconds it plays (0 = loops until you move).
+	"emote_wave": {"kind": "emote", "name": "Wave", "price": 0, "free": true, "len": 2.4, "blurb": "Hey! Over here!"},
+	"emote_thumbs": {"kind": "emote", "name": "Thumbs Up", "price": 0, "free": true, "len": 2.0, "blurb": "Nice shot."},
+	"emote_laugh": {"kind": "emote", "name": "Point & Laugh", "price": 150, "len": 2.8, "blurb": "For when your friend steps in their own bear trap."},
+	"emote_facepalm": {"kind": "emote", "name": "Facepalm", "price": 150, "len": 2.6, "blurb": "For when YOU step in your own bear trap."},
+	"emote_flex": {"kind": "emote", "name": "Flex", "price": 250, "len": 2.4, "blurb": "Show Bigboobs who's boss. (Bigboobs is boss.)"},
+	"emote_chicken": {"kind": "emote", "name": "Chicken Dance", "price": 300, "len": 0.0, "blurb": "Bawk. Keeps going until you move."},
+	"emote_disco": {"kind": "emote", "name": "Disco", "price": 400, "len": 0.0, "blurb": "Saturday night fever, any night of the week. Keeps going until you move."},
+	"emote_dizzy": {"kind": "emote", "name": "Seeing Stars", "price": 0, "achievement": "seeing_spots", "len": 3.2,
+		"blurb": "Earned, not bought: get the Seeing Spots achievement."},
+	"zoom_lens": {"kind": "upgrade", "name": "ZOOM LENS", "price": 600,
+		"blurb": "Screws onto your camera for good. Scroll the mouse wheel while looking through the viewfinder to zoom up to 2x. Zoomed shots score like you were closer."},
 	"flashtrap": {"kind": "gear", "name": "FLASH TRAP", "price": 150, "key": 6,
 		"blurb": "A prank for your friends: Q hides it, and the next OTHER player who walks past gets blinded. Cryptids and you don't set it off. Multiplayer only."},
 
@@ -70,10 +83,22 @@ static func ids_of(kind: String) -> Array:
 ## Is it on the shelf yet? Posters of a cryptid appear once you've developed a photo of it.
 static func in_stock(id: String) -> bool:
 	var it:= item(id)
+	if it.has("achievement") or it.get("free", false):
+		return false   # not for sale: free, or earned
 	if it.has("needs"):
 		return GameState.has_photo(str(it["needs"]))
 	return true
 
 
 static func owned(id: String) -> bool:
+	var it:= item(id)
+	if it.get("free", false):
+		return true
+	if it.has("achievement") and Achievements.has(str(it["achievement"])):
+		return true
 	return id in GameState.owned_items
+
+
+## The emote wheel's slots, in order (every emote, owned or not).
+static func emotes() -> Array:
+	return ids_of("emote")

@@ -64,6 +64,11 @@ func _ready() -> void:
 	add_child(_root)
 	_build_flashbang()
 	_build_toast()
+	_wheel = EmoteWheel.new()
+	_wheel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_wheel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_wheel.visible = false
+	_root.add_child(_wheel)
 
 	_vignette = TextureRect.new()
 	var g:= GradientTexture2D.new()
@@ -306,17 +311,20 @@ func _process(delta: float) -> void:
 		_stun_fade = maxf(0.0, _stun_fade - delta)
 		var left:= _stun_fade / maxf(_stun_total, 0.01)
 		# Blur holds for the first part, then clears; the burned-in afterimage fades out.
-		_blur_mat.set_shader_parameter("strength", clampf(left / 0.6, 0.0, 1.0))
-		_afterimage.modulate.a = 0.55 * pow(left, 1.6)
+		_blur_mat.set_shader_parameter("strength", clampf(left / 0.45, 0.0, 1.0))
+		_afterimage.modulate.a = 0.65 * pow(left, 1.4)
 		_lowpass_cutoff(lerpf(20000.0, 500.0, pow(left, 0.7)))
 		if _stun_fade <= 0.0:
 			_blur_rect.visible = false
 			_afterimage.visible = false
 			_afterimage.texture = null
 			_lowpass_cutoff(-1.0)
-	if _flash_rect.modulate.a > 0.0 and _flash_rect.color == Color(1, 1, 1):
+	if _white_hold > 0.0:
+		_white_hold -= delta
+		_flash_rect.modulate.a = 1.0
+	elif _flash_rect.modulate.a > 0.0 and _flash_rect.color == Color(1, 1, 1):
 		# camera-flash white decays on its own; black fades are driven by fade_to()
-		_flash_rect.modulate.a = maxf(0.0, _flash_rect.modulate.a - delta * (3.0 if _stun_fade > 0.0 else 1.5))
+		_flash_rect.modulate.a = maxf(0.0, _flash_rect.modulate.a - delta * (1.8 if _stun_fade > 0.0 else 1.5))
 	if _danger:
 		_vignette.modulate.a = 0.55 + 0.25 * sin(Time.get_ticks_msec() / 150.0)
 	elif _vignette.modulate.a > 0.0:
@@ -391,7 +399,14 @@ func set_flash_charge(frac: float) -> void:
 		_viewfinder.queue_redraw()
 
 
+func set_zoom(z: float) -> void:
+	_viewfinder.zoom = z
+	_viewfinder.queue_redraw()
+
+
 func set_aiming(on: bool) -> void:
+	_viewfinder.has_lens = Catalog.owned("zoom_lens")
+	_viewfinder.zoom = 1.0
 	_viewfinder.visible = on
 	_crosshair.visible = not on
 	update_stats()
@@ -517,8 +532,9 @@ func flash() -> void:
 ## fast, then blurred double vision with the moment of the flash burned in as a fading afterimage,
 ## and sound muffled. Lasts a second longer than the stun itself (you can move again before it clears).
 func stun_flash(duration: float) -> void:
-	_stun_total = duration + 1.0
+	_stun_total = duration + 1.5
 	_stun_fade = _stun_total
+	_white_hold = WHITE_HOLD
 	_flash_rect.color = Color(1, 1, 1)
 	_flash_rect.modulate.a = 1.0
 	_blur_rect.visible = true
@@ -528,7 +544,16 @@ func stun_flash(duration: float) -> void:
 		if img and not img.is_empty():
 			_afterimage.texture = ImageTexture.create_from_image(img)
 			_afterimage.visible = true
-			_afterimage.modulate.a = 0.55
+			_afterimage.modulate.a = 0.65
+
+
+var _wheel: EmoteWheel
+
+## The emote wheel (held open by the player); sel = highlighted slot or -1.
+func set_emote_wheel(open: bool, sel: int) -> void:
+	_wheel.visible = open
+	_wheel.sel = sel
+	_wheel.queue_redraw()
 
 
 var _toast: PanelContainer
@@ -576,6 +601,8 @@ func _tick_toast(delta: float) -> void:
 		Audio.play("cash_tick", -2.0)
 
 
+const WHITE_HOLD:= 0.4   # seconds of pure white before it starts to clear
+var _white_hold:= 0.0
 var _stun_total:= 1.0
 var _blur_rect: ColorRect
 var _blur_mat: ShaderMaterial
@@ -593,17 +620,17 @@ shader_type canvas_item;
 uniform sampler2D scr : hint_screen_texture, filter_linear_mipmap;
 uniform float strength = 0.0;
 void fragment() {
-	vec2 px = SCREEN_PIXEL_SIZE * 16.0 * strength;
+	vec2 px = SCREEN_PIXEL_SIZE * 30.0 * strength;
 	vec3 acc = vec3(0.0);
-	for (int i = 0; i < 16; i++) {
+	for (int i = 0; i < 24; i++) {
 		float a = float(i) * 2.39996;
-		float r = sqrt((float(i) + 0.5) / 16.0);
-		acc += textureLod(scr, SCREEN_UV + vec2(cos(a), sin(a)) * r * px, 2.0 * strength).rgb;
+		float r = sqrt((float(i) + 0.5) / 24.0);
+		acc += textureLod(scr, SCREEN_UV + vec2(cos(a), sin(a)) * r * px, 3.0 * strength).rgb;
 	}
-	vec3 c = acc / 16.0;
-	vec3 ghost = textureLod(scr, SCREEN_UV + vec2(0.018, 0.006) * strength, 1.0).rgb;
-	c = mix(c, ghost, 0.35 * strength);
-	COLOR = vec4(c * (1.0 + 0.3 * strength), 1.0);
+	vec3 c = acc / 24.0;
+	vec3 ghost = textureLod(scr, SCREEN_UV + vec2(0.03, 0.01) * strength, 2.0 * strength).rgb;
+	c = mix(c, ghost, 0.45 * strength);
+	COLOR = vec4(c * (1.0 + 0.35 * strength), 1.0);
 }
 """
 	_blur_mat = ShaderMaterial.new()
@@ -814,10 +841,60 @@ class Compass extends Control:
 			draw_circle(p, 3, Color(0.05, 0.05, 0.08))
 
 
+class EmoteWheel extends Control:
+	var sel:= -1
+
+	func _draw() -> void:
+		var ids:= Catalog.emotes()
+		var n:= ids.size()
+		if n == 0:
+			return
+		var c:= size * 0.5
+		var r_out:= minf(size.x, size.y) * 0.3
+		var r_in:= r_out * 0.36
+		draw_circle(c, r_out + 8, Color(0.04, 0.03, 0.07, 0.75))
+		var font:= get_theme_default_font()
+		for i in n:
+			var a0:= -PI * 0.5 + (i - 0.5) * TAU / n
+			var a1:= a0 + TAU / n
+			var owned:= Catalog.owned(str(ids[i]))
+			var col:= Color(1, 0.85, 0.35, 0.85) if i == sel else (Color(1, 1, 1, 0.12) if owned else Color(1, 1, 1, 0.04))
+			var pts:= PackedVector2Array()
+			for k in 13:
+				var a:= lerpf(a0 + 0.02, a1 - 0.02, k / 12.0)
+				pts.append(c + Vector2(cos(a), sin(a)) * r_out)
+			for k in 13:
+				var a:= lerpf(a1 - 0.02, a0 + 0.02, k / 12.0)
+				pts.append(c + Vector2(cos(a), sin(a)) * r_in)
+			draw_colored_polygon(pts, col)
+			var mid:= (a0 + a1) * 0.5
+			var lp:= c + Vector2(cos(mid), sin(mid)) * (r_in + r_out) * 0.5
+			var it:= Catalog.item(str(ids[i]))
+			var name:= str(it.get("name", ""))
+			var tc:= Color(0.1, 0.06, 0.02) if i == sel else (Color(1, 1, 1) if owned else Color(1, 1, 1, 0.35))
+			draw_string(font, lp + Vector2(-80, 6), name, HORIZONTAL_ALIGNMENT_CENTER, 160, 17, tc)
+			if not owned:
+				draw_string(font, lp + Vector2(-80, 26), "LOCKED", HORIZONTAL_ALIGNMENT_CENTER, 160, 12, Color(1, 0.5, 0.4, 0.8))
+		draw_circle(c, r_in - 6, Color(0.04, 0.03, 0.07, 0.9))
+		var mid_text:= "EMOTES"
+		var sub:= "move the mouse, let go of the key"
+		if sel >= 0 and sel < n:
+			var it2:= Catalog.item(str(ids[sel]))
+			mid_text = str(it2.get("name", ""))
+			if not Catalog.owned(str(ids[sel])):
+				sub = ("earn: " + str(Achievements.info(str(it2["achievement"]))[1])) if it2.has("achievement") else "$%d at Toe's stand" % int(it2.get("price", 0))
+			else:
+				sub = "let go to play it"
+		draw_string(font, c + Vector2(-r_in, 2), mid_text, HORIZONTAL_ALIGNMENT_CENTER, r_in * 2, 20, Color(1, 0.9, 0.6))
+		draw_string(font, c + Vector2(-r_in, 24), sub, HORIZONTAL_ALIGNMENT_CENTER, r_in * 2, 12, Color(1, 1, 1, 0.6))
+
+
 class Viewfinder extends Control:
 	var film:= 6
 	var film_max:= 6
 	var charge:= 1.0
+	var zoom:= 1.0
+	var has_lens:= false
 
 	func _draw() -> void:
 		var w:= size.x
@@ -870,6 +947,13 @@ class Viewfinder extends Control:
 		draw_string(font, Vector2(fx + 222, by), "READY" if ready else "CHARGING", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, fc2)
 		if fmod(Time.get_ticks_msec() / 1000.0, 1.0) < 0.6:
 			draw_circle(Vector2(w - m.x - 14, m.y + 14), 6, Color(1, 0.2, 0.15))
+		# zoom lens readout, top right inside the frame (under the REC dot)
+		if has_lens:
+			var zx:= w - m.x - 150
+			draw_string(font, Vector2(zx, m.y + 52), "%.1fx" % zoom, HORIZONTAL_ALIGNMENT_RIGHT, 130, 26, Color(1, 1, 1, 0.9))
+			draw_rect(Rect2(zx + 10, m.y + 62, 120, 6), Color(1, 1, 1, 0.25))
+			draw_rect(Rect2(zx + 10, m.y + 62, 120 * (zoom - 1.0), 6), Color(1, 0.86, 0.3))
+			draw_string(font, Vector2(zx, m.y + 86), "SCROLL TO ZOOM", HORIZONTAL_ALIGNMENT_RIGHT, 130, 13, Color(1, 1, 1, 0.5))
 
 
 class Crosshair extends Control:

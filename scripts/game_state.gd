@@ -23,6 +23,8 @@ var bait:= BAIT_START
 var traps:= TRAPS_START
 ## Newer gear (see Catalog): single-use tripod cams, joints (slow-mo), beers (fast but loud).
 var tripods:= 0
+## This session's developed prints, waiting to go in the photo book: [{tex, caption}] (not saved).
+var recent_prints: Array = []
 var flashtraps:= 0
 var joints:= 0
 var beers:= 0
@@ -402,6 +404,7 @@ const CONTROLS:= [
 	["select_beer", "Item: beer", [KEY_5]],
 	["select_flashtrap", "Item: flash trap", [KEY_6]],
 	["toggle_view", "First / third person", [KEY_V]],
+	["emote_wheel", "Emote wheel (hold)", [KEY_B]],
 	["voice_ptt", "Push to talk (online)", [KEY_T]],
 	["vote_yes", "Agree to sleep / drive on (online)", [KEY_Y]],
 	["vote_no", "Say no to sleeping / driving on (online)", [KEY_N]],

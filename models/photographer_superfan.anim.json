@@ -9,6 +9,14 @@
   "crouch": 0.0,
   "crouch_walk": 0.762,
   "snap": 0.0,
-  "drive": 0.0
+  "drive": 0.0,
+  "emote_wave": 0.0,
+  "emote_thumbs": 0.0,
+  "emote_laugh": 0.0,
+  "emote_facepalm": 0.0,
+  "emote_flex": 0.0,
+  "emote_chicken": 0.061,
+  "emote_disco": 0.12,
+  "emote_dizzy": 0.453
  }
 }

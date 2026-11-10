@@ -22,6 +22,7 @@ var _files: CryptidFiles
 var _travel: TravelPanel
 var _poster_wall: PosterWallUI
 var _wardrobe: WardrobeUI
+var _photobook: PhotobookUI
 var _forest: Forest
 var _terrain: Terrain
 var _toe: Node3D
@@ -126,6 +127,8 @@ func _ready() -> void:
 	add_child(_travel)
 	_wardrobe = WardrobeUI.new()
 	add_child(_wardrobe)
+	_photobook = PhotobookUI.new()
+	add_child(_photobook)
 	_poster_wall = PosterWallUI.new()
 	add_child(_poster_wall)
 	_pause = PauseMenu.new()
@@ -142,6 +145,14 @@ func _ready() -> void:
 	_player.item_placed.connect(_on_item_placed)
 	_player.out_of_item.connect(_on_out_of_item)
 	_player.aim_changed.connect(_hud.set_aiming)
+	_player.zoom_changed.connect(_hud.set_zoom)
+	_player.emote_wheel_changed.connect(_hud.set_emote_wheel)
+	_player.emote_locked.connect(func(id: String):
+		var it:= Catalog.item(id)
+		if it.has("achievement"):
+			_hud.show_message("%s is earned, not bought: get the %s achievement." % [str(it["name"]), str(Achievements.info(str(it["achievement"]))[1])])
+		else:
+			_hud.show_message("%s is locked. Toe's stand sells it for $%d." % [str(it["name"]), int(it["price"])]))
 	_player.item_selected.connect(_hud.show_item)
 	_player.stunned.connect(_hud.stun_flash)
 	_player.need_aim.connect(_on_need_aim)
@@ -164,6 +175,7 @@ func _ready() -> void:
 	_travel.closed.connect(_close_ui)
 	_poster_wall.closed.connect(_close_ui)
 	_wardrobe.closed.connect(_close_ui)
+	_photobook.closed.connect(_close_ui)
 	GameState.skin_changed.connect(_on_skin_changed)
 	_poster_wall.changed.connect(func(): _interior.refresh_decor())
 	_travel.chosen.connect(_on_travel_chosen)
@@ -628,7 +640,7 @@ func _focus() -> Cryptid:
 
 
 func _ui_open() -> bool:
-	return _poster.is_open() or _shop_ui.is_open() or _travel.is_open() or _pause.is_open() or _files.is_open() or _poster_wall.is_open() or _mp_panel.is_open() or _wardrobe.is_open()
+	return _poster.is_open() or _shop_ui.is_open() or _travel.is_open() or _pause.is_open() or _files.is_open() or _poster_wall.is_open() or _mp_panel.is_open() or _wardrobe.is_open() or _photobook.is_open()
 
 
 ## What E would do right now: "toe", "shop", "rv", "drive", "sleep", "develop", "exit" or "".
@@ -809,13 +821,13 @@ func _on_photo_taken(result: Dictionary) -> void:
 		if Net.online():
 			_net.santa_snapped()
 		_hud.show_message("HO HO HO! Santa's off — and you got him on film!")
-	if result.get("in_frame", false) and not GameState.unsold_photos.is_empty():
+	if not GameState.unsold_photos.is_empty():
 		await _capture_photo(GameState.unsold_photos.back())
 	_hud.flash()
 	if result.get("in_frame", false):
 		_hud.show_photo_popup("%s  $%d" % [str(result.get("reason", "Got it!")), int(result.get("value", 0))])
 	else:
-		_hud.show_photo_popup(str(result.get("reason", "No shot")))
+		_hud.show_photo_popup("%s  (it'll still develop)" % str(result.get("reason", "No shot")))
 	_hud.update_stats()
 
 
@@ -1030,6 +1042,9 @@ func _on_interact() -> void:
 		"closet":
 			_open_ui()
 			_wardrobe.open(false)
+		"photobook":
+			_open_ui()
+			_photobook.open()
 
 
 ## Pause the world for a menu.
@@ -1071,7 +1086,13 @@ func _on_buy(item: String) -> void:
 			GameState.save_game()
 			_interior.refresh_decor()
 			_rv.refresh_decor()
-			_hud.show_message("%s — it's waiting in the RV." % str(it["name"]))
+			match str(it.get("kind", "")):
+				"upgrade":
+					_hud.show_message("%s fitted to your camera. Scroll while looking through the viewfinder." % str(it["name"]))
+				"emote":
+					_hud.show_message("New emote: %s. Hold [%s] for the emote wheel." % [str(it["name"]), _key_name("emote_wheel")])
+				_:
+					_hud.show_message("%s — it's waiting in the RV." % str(it["name"]))
 		else:
 			Audio.play("dry_click", -4.0)
 			_shop.laugh()
@@ -1263,7 +1284,7 @@ func vote_passed(kind: String, map_id: String) -> void:
 	if _ending:
 		return
 	if _ui_open():
-		for panel in [_poster, _shop_ui, _travel, _pause, _files, _poster_wall, _mp_panel, _wardrobe]:
+		for panel in [_poster, _shop_ui, _travel, _pause, _files, _poster_wall, _mp_panel, _wardrobe, _photobook]:
 			panel.set("visible", false)
 		_close_ui()
 	if kind == "sleep":
@@ -1332,10 +1353,7 @@ func _develop() -> void:
 		var rec: Dictionary = photos[i]
 		if i < shown:
 			var tex: Texture2D = GameState.photo_images.get(str(rec.get("img", "")), null)
-			var names: Array = []
-			for id in rec.get("species", []):
-				names.append(Species.display_name(id))
-			var cap:= "%s  $%d" % [", ".join(names), int(rec.get("value", 0))]
+			var cap:= _print_caption(rec, false)
 			var m:= _interior.hang_print(base + i, maxi(base + shown, 4), tex, cap)
 			Audio.play("develop", -8.0, 0.08)
 			_interior.develop_print(m, 1.1)
@@ -1359,14 +1377,35 @@ func _develop() -> void:
 	if not new_files.is_empty():
 		msg = "+$%d!  NEW CRYPTID FILE: %s  (Esc → Cryptid Files)" % [gained, ", ".join(new_files)]
 	_hud.show_message(msg)
+	# The prints go to the photo book's "fresh prints" pile (newest first, a couple of dozen kept).
 	for rec in photos:
-		GameState.photo_images.erase(str(rec.get("img", "")))
+		var key:= str(rec.get("img", ""))
+		if GameState.photo_images.has(key):
+			GameState.recent_prints.push_front({"tex": GameState.photo_images[key], "caption": _print_caption(rec, true)})
+		GameState.photo_images.erase(key)
+	GameState.recent_prints.resize(mini(GameState.recent_prints.size(), 24))
+	if not GameState.recent_prints.is_empty():
+		msg += "  Keepers can go in the photo book on the table."
+		_hud.show_message(msg)
 	await _wait(1.6)
 	await _cine_to(_player.active_camera().global_transform, 0.7)
 	_cine_release()
 	_hud.set_hud_visible(true)
 	_hud.set_compass_visible(false)
 	_end_cutscene()
+
+
+## "Bigboobs  $45" on the clothesline; in the book also where and when.
+func _print_caption(rec: Dictionary, full: bool) -> String:
+	var names: Array = []
+	for id in rec.get("species", []):
+		names.append(Species.display_name(id))
+	var who:= ", ".join(names) if not names.is_empty() else "No cryptids"
+	var cap:= "%s  $%d" % [who, int(rec.get("value", 0))] if not names.is_empty() else who
+	if full:
+		var place:= str(Species.MAPS.get(str(rec.get("map", "")), {}).get("name", ""))
+		cap = "%s — %s, night %d" % [who, place, int(rec.get("night", GameState.night))] if place != "" else who
+	return cap
 
 
 # ------------------------------------------------------------------ getting grabbed

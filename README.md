@@ -5,12 +5,12 @@ Photograph cryptids for the tabloid. Meet the quota, don't get caught.
 Godot 4.7.2, Forward+ renderer, built for Windows PC.
 
 ## Download and play (Windows)
-1. Download **[CryptidPaparazzi-0.19-windows.zip](https://github.com/Paul-Steel-Balls/cryptid-paparazzi-/raw/main/download/CryptidPaparazzi-0.19-windows.zip)** (about 89 MB).
-2. Unzip it and run `CryptidPaparazzi-0.19.exe`. It's one file with everything inside. Windows SmartScreen may warn because it isn't code-signed: click "More info", then "Run anyway".
+1. Download **[CryptidPaparazzi-0.20-windows.zip](https://github.com/Paul-Steel-Balls/cryptid-paparazzi-/raw/main/download/CryptidPaparazzi-0.20-windows.zip)** (about 89 MB).
+2. Unzip it and run `CryptidPaparazzi-0.20.exe`. It's one file with everything inside. Windows SmartScreen may warn because it isn't code-signed: click "More info", then "Run anyway".
 3. To play together, see [Multiplayer](#multiplayer-co-op-up-to-4) below. Everyone should be on the same version.
 
 ## Run from source
-Open this folder in Godot 4.7.2 (it imports on first open) and press Play, or run `./build.sh 0.19` to run the tests and export a Windows `.exe`.
+Open this folder in Godot 4.7.2 (it imports on first open) and press Play, or run `./build.sh 0.20` to run the tests and export a Windows `.exe`.
 
 ## Where this came from
 
@@ -28,11 +28,13 @@ The source was recovered from `CryptidPaparazzi_2.apk`, version 0.2, package `co
 | Look | Mouse |
 | Raise the camera to your eye (always first person, even from third person) | Hold right mouse button |
 | Snap a photo (only while raised; 5 s flash recharge) | Left click |
+| Zoom (with the zoom lens, while raised) | Mouse wheel |
 | Jump | Space |
 | Crouch (slower, quieter, harder to spot) | C toggles, or hold Ctrl |
-| Pick bait / trap / tripod cam / joint / beer | 1 / 2 / 3 / 4 / 5 |
+| Pick bait / trap / tripod cam / joint / beer / flash trap | 1 / 2 / 3 / 4 / 5 / 6 |
 | Use what's picked | Q |
 | 1st / 3rd person | V (outdoors only) |
+| Emote wheel (move the mouse to pick, let go to play) | Hold B |
 | Talk / enter / use | E |
 | Break out of a UFO's tractor beam | Mash A and D (alternating) |
 | Pause, settings, Cryptid Files, Multiplayer | Esc |
@@ -95,7 +97,7 @@ The source was recovered from `CryptidPaparazzi_2.apk`, version 0.2, package `co
 | `scripts/remote_player.gd` | Another player in your world (and a cryptid target on the host) |
 | `scripts/multiplayer_panel.gd` | Pause → MULTIPLAYER |
 | `tools/mp_probe.gd` | Runs a host and a client on one machine and prints what each sees |
-| `tests/test_runner.gd` | Headless test suite (376 checks) |
+| `tests/test_runner.gd` | Headless test suite (412 checks) |
 
 ## Build
 
@@ -139,6 +141,7 @@ One `.exe` with everything inside. Windows SmartScreen may warn the first time b
 4. Cryptids with a `home` (Methman's camp, the Jersey Devil's tailgate, the Leperchaun's gold) get their spot on any map they live on. The City places them itself (`scripts/city.gd` `landmarks`).
 
 ## Changelog
+- **0.20**: **Flashes** hit harder: the white holds for a moment before it clears, and the blur and double vision are heavier and last longer. **Emotes**: hold B for the emote wheel, move the mouse to pick, let go to play. The camera swings round so you can see yourself, and moving stops it. Wave and Thumbs Up are free; Point & Laugh, Facepalm, Flex, Chicken Dance and Disco are sold at Toe's stand (new EMOTES tab); Seeing Stars is earned with the Seeing Spots achievement. Works in every outfit, and other players see them. **Every shot develops**: pictures with no cryptid in them (scenery, your friends) still come up in the darkroom, they just pay $0. **Photo book** on the RV's dinette table: paste in prints you've developed this session and keep them (they survive a new game). **Zoom lens** ($600, new CAMERA tab): scroll while looking through the viewfinder to zoom up to 2x; zoomed shots score as if you were that much closer.
 - **0.19**: **Flashbang**: getting flashed by a Grey Tourist now works like a flashbang: a white pop that clears fast, then blurry double vision with the moment of the flash burned in as a fading afterimage, and every sound muffled. You can stumble around at half speed while flashed, but can't sprint, jump or raise the camera. **Achievements**: 19 to earn (completion, funny and hard ones), with a pop-up when you get one and a list in the pause menu (Esc → ACHIEVEMENTS). They're kept separately from your save, so a new game doesn't wipe them. **Flash Trap** ($150, key 6): a prank for multiplayer. Hide it, and the next other player who walks past gets flashbanged. Cryptids and you never set it off. Friends can never set off your $1,500 tripod cam either.
 - **0.18**: **Outfits**: arms now come up with the camera on every outfit (the shirt underneath no longer pokes through baggy sleeves, and the T-Rex, Bigfoot, Ghillie, Clown and Astronaut suits move their own arms). **Floppy costumes**: the inflatable T-Rex's head and neck wobble and lag behind, and so do its tail and little arms; also the hot dog's buns and top, the banana's stem, the shark's fins and tail, the foam toe hat, the pirate's coat tails, beard and parrot, the clown's puffs, bigfoot's ears, the disco fro, antennae and the ghillie tufts. **Footbridge** rebuilt: gentle ramps at both ends, landings open toward the ramps, no rails in the way. **Playground**: the jungle gym is now a proper one: two decks with ladders, monkey bars between them, a cube climber and a fireman's pole. New `tools/props.py` (high-detail sculpted props, starting with a sedan) and `tools/style_preview.gd` (renders the art-style test scenes; the models go in `preview/`, not in the game).
 - **0.17**: **Fixed**: after driving to a new map, everyone arrived on the same spot and, because other players were solid, climbed onto each other's heads and shot into the sky; now you walk through each other and everyone gets their own spot by the RV. **Fixed**: after a map change a microphone could replay the same sentence on a loop; the mic now survives map changes and restarts cleanly after any long hitch. **DRIP CITY**, a costume shop on the City's camp road (neon sign, mannequins in the window): 13 outfits from $600 to $4000 (Hawaiian Dad, Toe Superfan with a giant foam toe hat, Ghillie Suit, Bigfoot Onesie, Clown, Banana, Hot Dog, Disco King, Pirate Captain with a parrot, Astronaut, Shark Attack, Inflatable T-Rex, Tinfoil Tux); change into anything you own at the shop or the new closet in the RV; others see your outfit online. **Votes**: nobody sleeps or drives on unless everyone agrees (Y / N). Other players on the compass. **Camp is a safe zone** (nothing chases, grabs, flashes or beams you up there); the ring of posts round camp is gone. Other players now raise the camera properly to their face (hands on it, following where they look, even while walking). **Plants**: detailed pines with drooping needle boughs and dead stubs, birches with forked limbs and black-marked bark, leafy crowns and bushes, layered mossy rocks with lichen, real flowers (stems, leaves, petals), arching ferns, spotted toadstools, and grass tufts everywhere; they sway a little in the wind. Detail is drawn up close and the simple versions further off, so frames are actually lighter than before.

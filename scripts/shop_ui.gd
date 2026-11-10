@@ -66,7 +66,7 @@ func _ready() -> void:
 	var tabs:= HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 8)
 	v.add_child(tabs)
-	for t in [["gear", "GEAR"], ["poster", "POSTERS"], ["trinket", "TRINKETS"]]:
+	for t in [["gear", "GEAR"], ["upgrade", "CAMERA"], ["emote", "EMOTES"], ["poster", "POSTERS"], ["trinket", "TRINKETS"]]:
 		var b:= UIStyle.poster_button(t[1], 20)
 		b.toggle_mode = true
 		b.custom_minimum_size = Vector2(170, 44)
@@ -108,6 +108,17 @@ func _show_tab(tab: String) -> void:
 			for id in GameState.GEAR:
 				var it:= Catalog.item(id)
 				grid.add_child(_item_card(id, str(it["name"]), str(it["blurb"]), int(it["price"])))
+		"upgrade", "emote":
+			var scroll2:= ScrollContainer.new()
+			scroll2.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+			_content.add_child(scroll2)
+			var grid2:= GridContainer.new()
+			grid2.columns = 4
+			grid2.add_theme_constant_override("h_separation", 12)
+			grid2.add_theme_constant_override("v_separation", 12)
+			scroll2.add_child(grid2)
+			for id in Catalog.ids_of(tab):
+				grid2.add_child(_extra_card(id))
 		"poster", "trinket":
 			var scroll:= ScrollContainer.new()
 			scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -209,6 +220,31 @@ func _trinket_card(id: String) -> Control:
 	bl.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(bl)
 	v.add_child(_buy_button(id, true, ""))
+	return card
+
+
+## Camera upgrades and emotes: name, blurb, and buy / OWNED / how to earn it.
+func _extra_card(id: String) -> Control:
+	var it:= Catalog.item(id)
+	var card:= PanelContainer.new()
+	card.add_theme_stylebox_override("panel", UIStyle.box(Color(0.94, 0.88, 0.72), Color(0.25, 0.14, 0.07), 3, 6, 10))
+	card.custom_minimum_size = Vector2(205, 200)
+	var v:= VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	card.add_child(v)
+	var t:= UIStyle.label(str(it["name"]), 19, UIStyle.INK, UIStyle.western())
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	t.custom_minimum_size = Vector2(185, 0)
+	v.add_child(t)
+	var bl:= UIStyle.label(str(it["blurb"]), 14, UIStyle.INK, UIStyle.typewriter())
+	bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	bl.custom_minimum_size = Vector2(185, 0)
+	bl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(bl)
+	var locked:= ""
+	if it.has("achievement"):
+		locked = "EARN: %s" % str(Achievements.info(str(it["achievement"]))[1]).to_upper()
+	v.add_child(_buy_button(id, Catalog.in_stock(id), locked))
 	return card
 
 

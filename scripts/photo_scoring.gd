@@ -13,7 +13,8 @@ const MAX_RANGE:= 35.0
 const HALF_FRAME_ANGLE_DEG:= 40.0
 
 
-static func evaluate(cryptid_pos: Vector3, cryptid_facing: Vector3, camera_pos: Vector3, camera_forward: Vector3, cryptid_state: int) -> Dictionary:
+## zoom: the zoom lens (1-2x) narrows the frame and makes the subject count as zoom times closer.
+static func evaluate(cryptid_pos: Vector3, cryptid_facing: Vector3, camera_pos: Vector3, camera_forward: Vector3, cryptid_state: int, zoom: float = 1.0) -> Dictionary:
 	var result:= {
 		"in_frame": false,
 		"score": 0,
@@ -23,18 +24,19 @@ static func evaluate(cryptid_pos: Vector3, cryptid_facing: Vector3, camera_pos: 
 		"distance": 0.0,
 	}
 	var to_cryptid:= cryptid_pos - camera_pos
-	var dist:= to_cryptid.length()
-	result["distance"] = dist
+	var real_dist:= to_cryptid.length()
+	result["distance"] = real_dist
+	var dist:= real_dist / maxf(zoom, 1.0)
 	if dist > MAX_RANGE:
 		result["reason"] = "Too far away!"
 		return result
-	if dist < 0.5:
+	if real_dist < 0.5:
 		result["reason"] = "Too close to see!"
 		return result
-	var dir:= to_cryptid / dist
+	var dir:= to_cryptid / real_dist
 	var dot:= dir.dot(camera_forward.normalized())
 	var angle_deg:= rad_to_deg(acos(clampf(dot, -1.0, 1.0)))
-	if angle_deg > HALF_FRAME_ANGLE_DEG:
+	if angle_deg > HALF_FRAME_ANGLE_DEG / maxf(zoom, 1.0):
 		result["reason"] = "Cryptid not in frame"
 		return result
 	var to_camera:= (camera_pos - cryptid_pos).normalized()
