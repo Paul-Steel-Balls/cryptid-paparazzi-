@@ -326,6 +326,17 @@ func tell_flashed(peer: int, stun: float) -> void:
 	_flashed.rpc_id(peer, stun)
 
 
+## Someone's flash trap got another player: straight to that player's PC.
+func tell_pranked(peer: int, stun: float, by: String) -> void:
+	if active():
+		_pranked.rpc_id(peer, stun, by)
+
+
+@rpc("any_peer", "reliable")
+func _pranked(stun: float, by: String) -> void:
+	main.flashed_by_prank(stun, by)
+
+
 func tell_snared(peer: int, duration: float) -> void:
 	_snared.rpc_id(peer, duration)
 
@@ -645,6 +656,10 @@ const VOTE_TIME:= 45.0
 var _vote: Dictionary = {}        # host: {kind, map, starter, yes: {id: true}, t}
 var _shown_vote: Dictionary = {}  # everyone: {kind, map, starter, yes, need}
 var _my_vote_done:= false
+
+
+func vote_kind() -> String:
+	return str(_shown_vote.get("kind", ""))
 
 
 func vote_running() -> bool:

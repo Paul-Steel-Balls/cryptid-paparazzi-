@@ -17,6 +17,8 @@ var _scroll: ScrollContainer
 var _main_page: Control
 var _settings_page: Control
 var _controls_page: Control
+var _ach_page: VBoxContainer
+var _ach_list: VBoxContainer
 var _bind_buttons: Dictionary = {}   # action -> Button
 var _waiting_for:= ""                # action being rebound
 ## Set by main: shows the live mic level in the meter while paused.
@@ -57,6 +59,7 @@ func _ready() -> void:
 	v.add_child(_button("SETTINGS", func(): _show(_settings_page)))
 	v.add_child(_button("CONTROLS", func(): _show(_controls_page)))
 	v.add_child(_button("CRYPTID FILES", func(): files_pressed.emit()))
+	v.add_child(_button("ACHIEVEMENTS", func(): _show(_ach_page)))
 	v.add_child(_button("MULTIPLAYER", func(): multiplayer_pressed.emit()))
 	v.add_child(HSeparator.new())
 	_quit_btn = _button("QUIT TO DESKTOP", _quit)
@@ -118,6 +121,14 @@ func _ready() -> void:
 		GameState.reset_bindings()
 		_refresh_controls()))
 	ct.add_child(_button("BACK", func(): _show(_main_page)))
+
+	# --- achievements page: rebuilt every time it's opened
+	_ach_page = _page(pages, "ACHIEVEMENTS")
+	_ach_list = VBoxContainer.new()
+	_ach_list.add_theme_constant_override("separation", 6)
+	_ach_page.add_child(_ach_list)
+	_ach_page.add_child(HSeparator.new())
+	_ach_page.add_child(_button("BACK", func(): _show(_main_page)))
 	_show(_main_page)
 	visible = false
 
@@ -147,12 +158,45 @@ func _section(t: String) -> Label:
 
 func _show(page: Control) -> void:
 	_cancel_rebind()
-	for p in [_main_page, _settings_page, _controls_page]:
+	for p in [_main_page, _settings_page, _controls_page, _ach_page]:
 		p.visible = p == page
 	if page == _controls_page:
 		_refresh_controls()
+	if page == _ach_page:
+		_refresh_achievements()
 	if _scroll:
 		_scroll.scroll_vertical = 0
+
+
+func _refresh_achievements() -> void:
+	for c in _ach_list.get_children():
+		c.queue_free()
+	var total:= Label.new()
+	total.text = "%d of %d unlocked" % [Achievements.count(), Achievements.DEFS.size()]
+	total.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	total.add_theme_font_size_override("font_size", 19)
+	_ach_list.add_child(total)
+	var group:= ""
+	for d in Achievements.DEFS:
+		if d[3] != group:
+			group = d[3]
+			_ach_list.add_child(_section(str(Achievements.GROUP_NAMES[group])))
+		var have:= Achievements.has(str(d[0]))
+		var row:= VBoxContainer.new()
+		row.add_theme_constant_override("separation", 0)
+		var name_l:= Label.new()
+		var prog:= Achievements.progress(str(d[0]))
+		name_l.text = ("★ " if have else "☆ ") + str(d[1]) + ("" if have or prog == "" else "   (%s)" % prog)
+		name_l.add_theme_font_size_override("font_size", 20)
+		name_l.add_theme_color_override("font_color", Color(1, 0.85, 0.35) if have else Color(0.7, 0.7, 0.75))
+		row.add_child(name_l)
+		var desc:= Label.new()
+		desc.text = "    " + str(d[2])
+		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc.add_theme_font_size_override("font_size", 16)
+		desc.add_theme_color_override("font_color", Color(0.85, 0.85, 0.9) if have else Color(0.55, 0.55, 0.6))
+		row.add_child(desc)
+		_ach_list.add_child(row)
 
 
 func _check(key: String, text: String) -> CheckButton:

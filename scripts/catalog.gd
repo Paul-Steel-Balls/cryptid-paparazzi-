@@ -18,6 +18,8 @@ const ITEMS:= {
 		"blurb": "Q to light up. For about 12 seconds the world slows right down. Photos taken high pay half (shaky hands)."},
 	"beer": {"kind": "gear", "name": "BEER", "price": 150, "key": 5,
 		"blurb": "Q to crack one. Faster legs for 25 seconds, but louder, and photos taken buzzed pay half."},
+	"flashtrap": {"kind": "gear", "name": "FLASH TRAP", "price": 150, "key": 6,
+		"blurb": "A prank for your friends: Q hides it, and the next OTHER player who walks past gets blinded. Cryptids and you don't set it off. Multiplayer only."},
 
 	"poster_believe": {"kind": "poster", "name": "I WANT TO BELIEVE", "price": 0, "portrait": "bigboobs",
 		"caption": "I WANT TO BELIEVE", "bg": Color(0.12, 0.1, 0.2), "ink": Color(1.0, 0.9, 0.6), "starter": true},

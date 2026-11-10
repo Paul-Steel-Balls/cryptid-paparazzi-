@@ -62,6 +62,8 @@ func _ready() -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_root)
+	_build_flashbang()
+	_build_toast()
 
 	_vignette = TextureRect.new()
 	var g:= GradientTexture2D.new()
@@ -299,12 +301,22 @@ func _process(delta: float) -> void:
 		_item_box.hold -= delta
 		if _item_box.hold <= 0.0:
 			_item_box.modulate.a = maxf(0.0, _item_box.modulate.a - delta * 2.5)
+	_tick_toast(delta)
 	if _stun_fade > 0.0:
-		_stun_fade -= delta
-		_flash_rect.modulate.a = maxf(_flash_rect.modulate.a, clampf(_stun_fade / 1.2, 0.0, 0.95))
-	elif _flash_rect.modulate.a > 0.0 and _flash_rect.color == Color(1, 1, 1):
+		_stun_fade = maxf(0.0, _stun_fade - delta)
+		var left:= _stun_fade / maxf(_stun_total, 0.01)
+		# Blur holds for the first part, then clears; the burned-in afterimage fades out.
+		_blur_mat.set_shader_parameter("strength", clampf(left / 0.6, 0.0, 1.0))
+		_afterimage.modulate.a = 0.55 * pow(left, 1.6)
+		_lowpass_cutoff(lerpf(20000.0, 500.0, pow(left, 0.7)))
+		if _stun_fade <= 0.0:
+			_blur_rect.visible = false
+			_afterimage.visible = false
+			_afterimage.texture = null
+			_lowpass_cutoff(-1.0)
+	if _flash_rect.modulate.a > 0.0 and _flash_rect.color == Color(1, 1, 1):
 		# camera-flash white decays on its own; black fades are driven by fade_to()
-		_flash_rect.modulate.a = maxf(0.0, _flash_rect.modulate.a - delta * 1.5)
+		_flash_rect.modulate.a = maxf(0.0, _flash_rect.modulate.a - delta * (3.0 if _stun_fade > 0.0 else 1.5))
 	if _danger:
 		_vignette.modulate.a = 0.55 + 0.25 * sin(Time.get_ticks_msec() / 150.0)
 	elif _vignette.modulate.a > 0.0:
@@ -396,7 +408,7 @@ func show_item(kind: String) -> void:
 
 
 func show_controls_help() -> void:
-	_help_label.text = "WASD move   Shift sprint (noisy!)   Space jump   C crouch\nHold RIGHT-CLICK to raise the camera, LEFT-CLICK to snap\n1 bait  2 trap  3 tripod cam  4 joint  5 beer   Q use it   V 1st/3rd person   E interact   Esc pause\nCareful: your traps don't know whose side you're on."
+	_help_label.text = "WASD move   Shift sprint (noisy!)   Space jump   C crouch\nHold RIGHT-CLICK to raise the camera, LEFT-CLICK to snap\n1 bait  2 trap  3 tripod  4 joint  5 beer  6 flash trap   Q use it   V 1st/3rd person   E interact   Esc pause\nCareful: your traps don't know whose side you're on."
 	_help_label.visible = true
 	_help_label.modulate.a = 1.0
 	_help_timer = 14.0
@@ -501,11 +513,130 @@ func flash() -> void:
 	_flash_rect.modulate.a = 0.7
 
 
-## Blinded by a tourist's flash.
+## Blinded by a flash (tourist or a friend's flash trap), flashbang-style: a white pop that clears
+## fast, then blurred double vision with the moment of the flash burned in as a fading afterimage,
+## and sound muffled. Lasts a second longer than the stun itself (you can move again before it clears).
 func stun_flash(duration: float) -> void:
-	_stun_fade = duration
+	_stun_total = duration + 1.0
+	_stun_fade = _stun_total
 	_flash_rect.color = Color(1, 1, 1)
 	_flash_rect.modulate.a = 1.0
+	_blur_rect.visible = true
+	_blur_mat.set_shader_parameter("strength", 1.0)
+	if DisplayServer.get_name() != "headless" and is_inside_tree():
+		var img:= get_viewport().get_texture().get_image()
+		if img and not img.is_empty():
+			_afterimage.texture = ImageTexture.create_from_image(img)
+			_afterimage.visible = true
+			_afterimage.modulate.a = 0.55
+
+
+var _toast: PanelContainer
+var _toast_label: Label
+var _toast_queue: Array = []
+var _toast_time:= 0.0
+
+## "ACHIEVEMENT UNLOCKED" pop-up, top right; several in a row queue up.
+func _build_toast() -> void:
+	_toast = PanelContainer.new()
+	var sb:= StyleBoxFlat.new()
+	sb.bg_color = Color(0.08, 0.07, 0.12, 0.92)
+	sb.border_color = Color(1, 0.85, 0.35)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(10)
+	sb.set_content_margin_all(12)
+	_toast.add_theme_stylebox_override("panel", sb)
+	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_place(_toast, 1.0, 0.0, 1.0, 0.0, -430.0, 70.0, -20.0, 150.0)
+	_toast_label = _label(19, Color(1, 0.92, 0.6))
+	_toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_toast.add_child(_toast_label)
+	_toast.visible = false
+	_root.add_child(_toast)
+	Achievements.unlocked.connect(func(id: String): _toast_queue.append(id))
+
+
+func _tick_toast(delta: float) -> void:
+	if _toast_time > 0.0:
+		_toast_time -= delta
+		_toast.modulate.a = clampf(_toast_time / 0.5, 0.0, 1.0)
+		if _toast_time <= 0.0:
+			_toast.visible = false
+		return
+	if _toast_queue.is_empty():
+		return
+	var d: Array = Achievements.info(str(_toast_queue.pop_front()))
+	if d.is_empty():
+		return
+	_toast_label.text = "★ ACHIEVEMENT UNLOCKED\n%s\n%s" % [d[1], d[2]]
+	_toast.visible = true
+	_toast.modulate.a = 1.0
+	_toast_time = 4.5
+	if is_inside_tree():
+		Audio.play("cash_tick", -2.0)
+
+
+var _stun_total:= 1.0
+var _blur_rect: ColorRect
+var _blur_mat: ShaderMaterial
+var _afterimage: TextureRect
+var _lowpass: AudioEffectLowPassFilter
+
+func _build_flashbang() -> void:
+	_blur_rect = ColorRect.new()
+	_blur_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_blur_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_blur_rect.visible = false
+	var sh:= Shader.new()
+	sh.code = """
+shader_type canvas_item;
+uniform sampler2D scr : hint_screen_texture, filter_linear_mipmap;
+uniform float strength = 0.0;
+void fragment() {
+	vec2 px = SCREEN_PIXEL_SIZE * 16.0 * strength;
+	vec3 acc = vec3(0.0);
+	for (int i = 0; i < 16; i++) {
+		float a = float(i) * 2.39996;
+		float r = sqrt((float(i) + 0.5) / 16.0);
+		acc += textureLod(scr, SCREEN_UV + vec2(cos(a), sin(a)) * r * px, 2.0 * strength).rgb;
+	}
+	vec3 c = acc / 16.0;
+	vec3 ghost = textureLod(scr, SCREEN_UV + vec2(0.018, 0.006) * strength, 1.0).rgb;
+	c = mix(c, ghost, 0.35 * strength);
+	COLOR = vec4(c * (1.0 + 0.3 * strength), 1.0);
+}
+"""
+	_blur_mat = ShaderMaterial.new()
+	_blur_mat.shader = sh
+	_blur_rect.material = _blur_mat
+	_root.add_child(_blur_rect)
+	_afterimage = TextureRect.new()
+	_afterimage.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_afterimage.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_afterimage.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_afterimage.stretch_mode = TextureRect.STRETCH_SCALE
+	_afterimage.visible = false
+	_root.add_child(_afterimage)
+
+
+## Muffle every sound (low-pass on the master bus) while flashed; cutoff < 0 turns it off.
+func _lowpass_cutoff(hz: float) -> void:
+	if _lowpass == null:
+		if hz < 0.0:
+			return
+		_lowpass = AudioEffectLowPassFilter.new()
+		AudioServer.add_bus_effect(0, _lowpass)
+	var idx:= -1
+	for i in AudioServer.get_bus_effect_count(0):
+		if AudioServer.get_bus_effect(0, i) == _lowpass:
+			idx = i
+	if idx < 0:
+		return
+	if hz < 0.0:
+		AudioServer.set_bus_effect_enabled(0, idx, false)
+		return
+	AudioServer.set_bus_effect_enabled(0, idx, true)
+	_lowpass.cutoff_hz = hz
 
 
 func fade_to(alpha: float, seconds: float, color: Color = Color(0, 0, 0)) -> void:
@@ -789,6 +920,13 @@ class ItemBox extends Control:
 			draw_circle(head + dir * 2, 5, Color(1, 0.45, 0.1))
 			for i in 3:
 				draw_arc(c + Vector2(30 + i * 4, -26 - i * 10), 6 + i * 2, PI * 0.2, PI * 1.2, 8, Color(0.85, 0.85, 0.9, 0.7 - i * 0.2), 2)
+		elif kind == "flashtrap":
+			draw_rect(Rect2(c + Vector2(-26, -16), Vector2(52, 34)), Color(0.14, 0.14, 0.16))
+			draw_rect(Rect2(c + Vector2(-18, -10), Vector2(36, 12)), Color(0.95, 0.95, 1.0))
+			draw_circle(c + Vector2(18, 10), 3, Color(0.2, 1, 0.3))
+			for i in 8:
+				var a:= -PI * 0.9 + i * PI * 0.8 / 7.0
+				draw_line(c + Vector2(cos(a), sin(a)) * 30 + Vector2(0, -4), c + Vector2(cos(a), sin(a)) * 40 + Vector2(0, -4), Color(1, 0.95, 0.5), 3)
 		elif kind == "beer":
 			draw_rect(Rect2(c + Vector2(-18, -32), Vector2(36, 64)), Color(0.85, 0.65, 0.15))
 			draw_rect(Rect2(c + Vector2(-18, -32), Vector2(36, 8)), Color(0.8, 0.8, 0.82))
@@ -812,7 +950,7 @@ class ItemBox extends Control:
 			return
 		var font:= get_theme_default_font()
 		var it:= Catalog.item(kind)
-		var key:= "%d  %s" % [int(it.get("key", 0)), str({"bait": "BAIT", "trap": "TRAP", "tripod": "TRIPOD", "joint": "JOINT", "beer": "BEER"}.get(kind, kind)).to_upper()]
+		var key:= "%d  %s" % [int(it.get("key", 0)), str({"bait": "BAIT", "trap": "TRAP", "tripod": "TRIPOD", "joint": "JOINT", "beer": "BEER", "flashtrap": "FLASH TRAP"}.get(kind, kind)).to_upper()]
 		draw_string(font, Vector2(10, 22), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1, 0.85, 0.4))
 		var txt:= "%d/%d" % [count, max_count]
 		var tw:= font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 26).x

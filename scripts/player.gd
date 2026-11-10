@@ -177,6 +177,8 @@ func _input(event: InputEvent) -> void:
 		select_item("joint")
 	if event.is_action_pressed("select_beer"):
 		select_item("beer")
+	if event.is_action_pressed("select_flashtrap"):
+		select_item("flashtrap")
 	if event.is_action_pressed("use_item"):
 		use_item()
 	if event.is_action_pressed("jump"):
@@ -228,8 +230,9 @@ func _physics_process(delta: float) -> void:
 		sprinting = false
 		_jump_request = false
 	if _stun_timer > 0.0:
-		fwd = 0.0
-		strafe = 0.0
+		# Flashed: you can stumble about half-speed, but can't sprint, jump or aim.
+		fwd *= 0.5
+		strafe *= 0.5
 		sprinting = false
 		_jump_request = false
 	crouching = _crouch_toggle or (not is_touch and Input.is_action_pressed("crouch_hold"))
@@ -435,7 +438,7 @@ func _step_sound(sprinting: bool) -> String:
 
 
 func set_aiming(on: bool) -> void:
-	if controls_locked and on:
+	if (controls_locked or _stun_timer > 0.0) and on:
 		return
 	if aiming == on:
 		return
@@ -468,6 +471,8 @@ func use_item() -> Node3D:
 			return place_trap()
 		"tripod":
 			return place_tripod()
+		"flashtrap":
+			return place_flashtrap()
 		"joint", "beer":
 			consume(selected_item)
 	return null
@@ -511,6 +516,25 @@ func place_tripod() -> Node3D:
 	if is_inside_tree():
 		Audio.play_3d("trap_set", t.global_position, -6.0)
 	item_placed.emit("tripod", t)
+	return t
+
+
+## Flash trap: hidden prank for the other players (FlashTrap fires on RemotePlayers only).
+func place_flashtrap() -> Node3D:
+	if GameState.game_over or indoors:
+		return null
+	if not GameState.take_item("flashtrap"):
+		out_of_item.emit("flashtrap")
+		return null
+	var t:= FlashTrap.new()
+	var world:= get_parent() if get_parent() != null else self
+	world.add_child(t)
+	t.global_position = _drop_point(1.2)
+	t.rotation.y = _yaw
+	t.owner_player = self
+	if is_inside_tree():
+		Audio.play_3d("trap_set", t.global_position, -10.0)
+	item_placed.emit("flashtrap", t)
 	return t
 
 
@@ -764,6 +788,7 @@ func place_trap() -> Node3D:
 ## Stepped in a (probably your own) trap.
 func snare(duration: float) -> void:
 	_snare_timer = duration
+	Achievements.note_snared()
 	_shake = 1.0
 	if is_inside_tree():
 		Audio.play("ouch", 0.0)

@@ -91,7 +91,52 @@ def car_sedan():
     return ch
 
 
-BUILDERS = {"car_sedan": car_sedan}
+def car_toon():
+    """A chunky cartoon car for the stylized looks: short and tall, a bubble cabin, fat tyres,
+    big round headlights and bumpers. Front at +z, ~3.5 m long."""
+    s = Skeleton(); s.add("root", None, (0, 0, 0))
+    ch = Character("car_toon", s, voxel=0.025)
+    ch.group_voxel = {"body": 0.025, "metal": 0.02, "shiny": 0.022, "cloth": 0.025}
+    paint = (0.85, 0.85, 0.85)
+    dark = (0.08, 0.08, 0.09)
+    # Fat tub of a body, a hood that dips to the front, wheel arches cut out.
+    ch.add(box((0, 0.78, 0.0), (0.86, 0.38, 1.68), "root", paint, r=0.34, k=0.05))
+    ch.add(box((0, 1.25, 1.35), (1.2, 0.25, 0.5), "root", paint, rot=(-0.25, 0, 0), sub=True, k=0.15))
+    for z in (1.02, -1.02):
+        ch.add(cylinder((-1.2, 0.46, z), (1.2, 0.46, z), 0.56, "root", paint, rounding=0.02, sub=True, k=0.05))
+    # Bubble cabin: glass all round, a fat roof cap and chunky pillars over it.
+    ch.add(ellipsoid((0, 1.32, -0.25), (0.74, 0.5, 1.0), "root", (0.1, 0.13, 0.18), mat="shiny", k=0.0))
+    ch.add(ellipsoid((0, 1.62, -0.28), (0.72, 0.2, 0.84), "root", paint, k=0.06))
+    for x in (-1, 1):
+        for (zb, zt) in ((0.62, 0.32), (-1.15, -0.95)):
+            ch.add(capsule((x * 0.7, 1.08, zb), (x * 0.6, 1.62, zt), 0.05, "root", paint, k=0.03))
+        ch.add(capsule((x * 0.8, 1.08, 0.66), (x * 0.8, 1.08, -1.18), 0.06, "root", paint, k=0.05))
+    # Big round headlights with chrome rings, little tail lights, grin of a grille.
+    for x in (-1, 1):
+        c = np.array([x * 0.5, 0.86, 1.62])
+        ch.add(cylinder(c - [0, 0, 0.12], c + [0, 0, 0.06], 0.2, "root", (0.8, 0.8, 0.82), rounding=0.05, mat="metal", k=0.02))
+        ch.add(sphere(c + [0, 0, 0.04], 0.16, "root", (1.0, 0.95, 0.75), mat="shiny", k=0.0))
+        ch.add(ellipsoid((x * 0.58, 0.95, -1.66), (0.14, 0.1, 0.05), "root", (0.8, 0.1, 0.08), mat="shiny", k=0.0))
+    ch.add(box((0, 0.6, 1.68), (0.34, 0.1, 0.06), "root", dark, r=0.08, mat="cloth", k=0.0))
+    for k in range(5):
+        ch.add(box((-0.26 + k * 0.13, 0.6, 1.73), (0.025, 0.08, 0.02), "root", (0.75, 0.75, 0.78), r=0.01, mat="metal", k=0.0))
+    # Chunky chrome bumpers.
+    for z, sgn in ((1.74, 1), (-1.72, -1)):
+        ch.add(capsule((-0.82, 0.42, z), (0.82, 0.42, z), 0.12, "root", (0.82, 0.83, 0.86), mat="metal", k=0.0))
+    # Fat tyres with deep hubcaps.
+    for z in (1.02, -1.02):
+        for x in (-1, 1):
+            c = np.array([x * 0.74, 0.46, z])
+            ch.add(torus(c, 0.3, 0.17, "root", dark, rot=(0, 0, math.pi / 2), mat="cloth", k=0.0))
+            ch.add(cylinder(c - [0.14, 0, 0], c + [0.14, 0, 0], 0.32, "root", dark, rounding=0.08, mat="cloth", k=0.0))
+            ch.add(ellipsoid(c + [x * 0.13, 0, 0], (0.06, 0.22, 0.22), "root", (0.88, 0.88, 0.9), mat="metal", k=0.0))
+    # Side mirrors.
+    for x in (-1, 1):
+        ch.add(ellipsoid((x * 0.95, 1.12, 0.55), (0.12, 0.08, 0.06), "root", paint, k=0.02))
+    return ch
+
+
+BUILDERS = {"car_sedan": car_sedan, "car_toon": car_toon}
 
 if __name__ == "__main__":
     for name, fn in BUILDERS.items():

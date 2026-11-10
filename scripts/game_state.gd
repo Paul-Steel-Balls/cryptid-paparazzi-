@@ -23,9 +23,10 @@ var bait:= BAIT_START
 var traps:= TRAPS_START
 ## Newer gear (see Catalog): single-use tripod cams, joints (slow-mo), beers (fast but loud).
 var tripods:= 0
+var flashtraps:= 0
 var joints:= 0
 var beers:= 0
-const GEAR:= ["bait", "trap", "tripod", "joint", "beer"]
+const GEAR:= ["bait", "trap", "tripod", "joint", "beer", "flashtrap"]
 var current_map:= "woods"
 var unlocked_maps: Array = ["woods"]
 var night:= 1
@@ -146,6 +147,7 @@ func reset() -> void:
 	bait = BAIT_START
 	traps = TRAPS_START
 	tripods = 0
+	flashtraps = 0
 	joints = 0
 	beers = 0
 	current_map = "woods"
@@ -172,6 +174,7 @@ func start_night() -> void:
 
 ## Night over (slept in the RV, or got grabbed). Grabbed = undeveloped photos are lost.
 func end_night(caught: bool) -> void:
+	Achievements.note_night_end(caught, not caught)
 	if caught:
 		unsold_photos.clear()
 	night += 1
@@ -239,6 +242,7 @@ func item_count(kind: String) -> int:
 		"bait": return bait
 		"trap": return traps
 		"tripod": return tripods
+		"flashtrap": return flashtraps
 		"joint": return joints
 		"beer": return beers
 	return 0
@@ -249,6 +253,7 @@ func set_item_count(kind: String, n: int) -> void:
 		"bait": bait = n
 		"trap": traps = n
 		"tripod": tripods = n
+		"flashtrap": flashtraps = n
 		"joint": joints = n
 		"beer": beers = n
 
@@ -317,7 +322,7 @@ func wear_skin(id: String) -> void:
 func save_game() -> void:
 	if not saving_enabled:
 		return
-	var data:= {"money": money, "bait": bait, "traps": traps, "tripods": tripods, "joints": joints, "beers": beers, "current_map": current_map,
+	var data:= {"money": money, "bait": bait, "traps": traps, "tripods": tripods, "flashtraps": flashtraps, "joints": joints, "beers": beers, "current_map": current_map,
 		"unlocked_maps": unlocked_maps, "night": night, "album": album, "file_scores": file_scores, "third_person": third_person,
 		"unsold_photos": unsold_photos, "cameras_thrown": cameras_thrown,
 		"owned_items": owned_items, "poster_slots": poster_slots, "owned_skins": owned_skins, "skin": skin}
@@ -339,6 +344,7 @@ func load_game() -> void:
 	bait = int(data.get("bait", BAIT_START))
 	traps = int(data.get("traps", TRAPS_START))
 	tripods = int(data.get("tripods", 0))
+	flashtraps = int(data.get("flashtraps", 0))
 	joints = int(data.get("joints", 0))
 	beers = int(data.get("beers", 0))
 	current_map = str(data.get("current_map", "woods"))
@@ -394,6 +400,7 @@ const CONTROLS:= [
 	["select_tripod", "Item: tripod cam", [KEY_3]],
 	["select_joint", "Item: joint", [KEY_4]],
 	["select_beer", "Item: beer", [KEY_5]],
+	["select_flashtrap", "Item: flash trap", [KEY_6]],
 	["toggle_view", "First / third person", [KEY_V]],
 	["voice_ptt", "Push to talk (online)", [KEY_T]],
 	["vote_yes", "Agree to sleep / drive on (online)", [KEY_Y]],

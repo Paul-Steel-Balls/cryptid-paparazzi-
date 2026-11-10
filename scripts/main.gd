@@ -780,6 +780,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 		if event.is_action_pressed("vote_no"):
+			Achievements.note_vote(_net.vote_kind(), false)
 			_net.answer_vote(false)
 			get_viewport().set_input_as_handled()
 			return
@@ -792,6 +793,7 @@ func _unhandled_input(event: InputEvent) -> void:
 # ------------------------------------------------------------------ events
 
 func _on_photo_taken(result: Dictionary) -> void:
+	Achievements.note_photo(result, _player.joint_time > 0.0, _player.beer_time > 0.0)
 	var who: Array = result.get("species_list", [])
 	if "ufo" in who:
 		for subj in result.get("subjects", []):
@@ -863,6 +865,15 @@ func _on_item_placed(kind: String, node: Node3D) -> void:
 		_net.place_item(kind, xf)
 		_hud.show_message("Trap set. Don't step in it." if kind == "trap" else "Bait down. Something will smell that...")
 		return
+	if kind == "flashtrap":
+		var ft:= node as FlashTrap
+		ft.targets = func() -> Dictionary: return _net.remotes if Net.online() else {}
+		ft.fired.connect(func(peer: int):
+			_net.tell_pranked(peer, FlashTrap.STUN, Net.my_name)
+			_hud.show_message("Your flash trap got %s!" % Net.name_of(peer)))
+		_hud.show_message("Flash trap hidden. The next friend who walks past is in for a surprise." if Net.online()
+			else "Flash trap hidden... but it only goes off for other players. Play online to prank someone.")
+		return
 	if kind == "tripod":
 		(node as Tripod).fired.connect(_on_tripod_fired.bind(node))
 		_net.share_tripod(node as Tripod)
@@ -876,7 +887,7 @@ func _on_item_placed(kind: String, node: Node3D) -> void:
 
 func _on_out_of_item(kind: String) -> void:
 	_hud.show_item(kind)
-	var names:= {"bait": "bait", "trap": "traps", "tripod": "tripod cams", "joint": "joints", "beer": "beer"}
+	var names:= {"bait": "bait", "trap": "traps", "tripod": "tripod cams", "joint": "joints", "beer": "beer", "flashtrap": "flash traps"}
 	_hud.show_message("No %s left — the stand by the RV sells more." % names.get(kind, kind))
 
 
@@ -893,6 +904,7 @@ func _on_item_consumed(kind: String) -> void:
 ## The tripod cam caught something (or someone).
 func _on_tripod_fired(result: Dictionary, target: Node3D, tripod: Tripod) -> void:
 	if target == _player:
+		Achievements.note_selfie()
 		_hud.flash()
 		_hud.show_message("Your tripod cam got a lovely shot of... you. Worth exactly $0.")
 		return
@@ -902,6 +914,7 @@ func _on_tripod_fired(result: Dictionary, target: Node3D, tripod: Tripod) -> voi
 	if not result.get("in_frame", false):
 		_hud.show_message("Tripod cam went off — but whatever it caught is just a blur.")
 		return
+	Achievements.note_photo(result)
 	var rec:= {"value": int(result["value"]), "quality": str(result["reason"]), "species": result["species_list"],
 		"scores": result.get("scores", {}), "map": GameState.current_map, "tripod": true}
 	GameState.unsold_photos.append(rec)
@@ -964,13 +977,22 @@ func _on_flashed_by_tourist(c: Cryptid) -> void:
 	flashed_by_tourist_remote(d)
 
 
+## Another player's flash trap got this PC's player.
+func flashed_by_prank(stun: float, by: String) -> void:
+	Achievements.note_flashed(false)
+	_player.stun(stun)
+	_hud.show_message("%s's flash trap got you! You're seeing spots..." % by)
+
+
 ## A tourist flashed this PC's player (called directly, or from the host online).
 func flashed_by_tourist_remote(d: float) -> void:
 	_player.stun(d)
+	Achievements.note_flashed(true)
 	_tourist_flashes += 1
 	if _tourist_flashes in [UFO_AFTER_FLASHES - 3, UFO_AFTER_FLASHES - 1] and not _ufo_done:
 		_hud.show_message("Another grey snapped you (%d tonight). They're taking a real interest in you..." % _tourist_flashes)
 	elif _tourist_flashes >= UFO_AFTER_FLASHES and not _ufo_done and _ufo == null:
+		Achievements.note_ufo_summoned()
 		_summon_ufo()
 	else:
 		_hud.show_message("A tourist just took YOUR picture! You're seeing spots...")

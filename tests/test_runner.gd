@@ -21,6 +21,8 @@ func _check(name: String, cond: bool) -> void:
 
 func _ready() -> void:
 	GameState.saving_enabled = false
+	Achievements.saving_enabled = false
+	Achievements.clear()
 	GameState.reset()
 	_test_scoring()
 	_test_film_and_develop()
@@ -59,6 +61,7 @@ func _ready() -> void:
 	await _test_v016()
 	await _test_v017()
 	await _test_v018()
+	await _test_v019()
 	print("RESULT: %d/%d checks passed" % [_passed, _passed + _failed])
 	if _failed > 0:
 		get_tree().quit(1)
@@ -1414,7 +1417,7 @@ func _test_v010() -> void:
 	var shop:= ShopUI.new()
 	add_child(shop)
 	shop.open()
-	_check("v010: gear tab lists bait, trap, tripod, joint, beer", shop._buttons.size() == 5)
+	_check("v010: gear tab lists every gear item (bait, trap, tripod, joint, beer, flash trap)", shop._buttons.size() == GameState.GEAR.size())
 	shop.queue_free()
 	GameState.reset()
 
@@ -2035,4 +2038,147 @@ func _test_v018() -> void:
 	sk.skeleton_updated.disconnect(grab)
 	_check("v018: ...and the dino head flops when you move", rest_up.angle_to(lagged) > 0.02)
 	m.free()
+	GameState.reset()
+
+
+
+func _test_v019() -> void:
+	GameState.reset()
+	Achievements.clear()
+	var main_node: Node = (load("res://main.tscn") as PackedScene).instantiate()
+	add_child(main_node)
+	await get_tree().process_frame
+	var mp: Player = main_node.get("_player")
+	var hud: HUD = main_node.get("_hud")
+	# Flashbang: white pop, blur and muffled sound; you can stumble about but not aim.
+	main_node.call("flashed_by_tourist_remote", 1.5)
+	_check("v019: flashed -> blur overlay on", hud.get("_blur_rect").visible)
+	await get_tree().process_frame
+	_check("v019: flashed -> sound muffled", hud.get("_lowpass") != null and (hud.get("_lowpass") as AudioEffectLowPassFilter).cutoff_hz < 2000.0)
+	_check("v019: flashed -> can't raise the camera", (func():
+		mp.set_aiming(true)
+		return not mp.aiming).call())
+	mp.global_position = Vector3(mp.global_position.x, mp.global_position.y, mp.global_position.z)
+	var p0:= mp.global_position
+	Input.action_press("move_forward")
+	for i in 20:
+		await get_tree().physics_frame
+	Input.action_release("move_forward")
+	_check("v019: flashed -> can still stumble forward", Vector2(mp.global_position.x - p0.x, mp.global_position.z - p0.z).length() > 0.2)
+	for i in 200:
+		await get_tree().process_frame
+		if not hud.get("_blur_rect").visible:
+			break
+	hud.call("_process", 3.0)
+	_check("v019: the blur clears afterwards", not hud.get("_blur_rect").visible)
+	_check("v019: after the flash you can aim again", (func():
+		mp.call("set", "_stun_timer", 0.0)
+		mp.set_aiming(true)
+		var ok:= mp.aiming
+		mp.set_aiming(false)
+		return ok).call())
+	# Flash trap: in the shop, only fires on OTHER players, never the owner or cryptids.
+	_check("v019: flash trap is gear in the shop", "flashtrap" in GameState.GEAR and Catalog.item("flashtrap").get("price", 0) == 150)
+	_check("v019: key 6 selects the flash trap", InputMap.has_action("select_flashtrap"))
+	GameState.flashtraps = 1
+	mp.select_item("flashtrap")
+	var ft: FlashTrap = mp.use_item() as FlashTrap
+	_check("v019: flash trap placed", ft != null and GameState.flashtraps == 0)
+	var fired_at:= []
+	ft.fired.connect(func(peer: int): fired_at.append(peer))
+	var friend:= Node3D.new()
+	add_child(friend)
+	friend.global_position = ft.global_position + Vector3(1.0, 0, 0)
+	ft.targets = func() -> Dictionary: return {42: friend, 7: mp}
+	ft.set("_arm", 0.0)
+	mp.global_position = ft.global_position + Vector3(0.5, 0, 0)
+	friend.global_position = ft.global_position + Vector3(20, 0, 0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check("v019: flash trap ignores its owner", fired_at.is_empty())
+	friend.global_position = ft.global_position + Vector3(1.0, 0, 0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check("v019: flash trap fires on a friend walking past", fired_at == [42])
+	friend.free()
+	# Tripods: a friend's copy of your tripod (a look-only ghost) can never go off.
+	var ghost:= Tripod.new()
+	add_child(ghost)
+	ghost.set("_arm", 0.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check("v019: a ghost tripod (friend's view) never fires", not ghost.used)
+	ghost.free()
+	# Achievements
+	_check("v019: 19 achievements defined", Achievements.DEFS.size() == 19)
+	_check("v019: flashes count toward Seeing Spots", not Achievements.has("seeing_spots") and int(Achievements.call("_flags")["tourist_flashes"]) == 1)
+	for i in 9:
+		Achievements.note_flashed(true)
+	_check("v019: 10 tourist flashes in a night -> Seeing Spots", Achievements.has("seeing_spots"))
+	GameState.skin = "hotdog"
+	Achievements.note_flashed(true)
+	_check("v019: flashed in the hot dog -> Relish", Achievements.has("relish"))
+	GameState.skin = "default"
+	Achievements.note_photo({"in_frame": true, "species_list": ["the_rake"], "scores": {"the_rake": 30}})
+	_check("v019: a so-so Rake photo isn't a portrait", not Achievements.has("rake_portrait"))
+	Achievements.note_photo({"in_frame": true, "species_list": ["the_rake"], "scores": {"the_rake": 64}})
+	_check("v019: AMAZING Rake photo -> Portrait", Achievements.has("rake_portrait"))
+	Achievements.note_photo({"in_frame": true, "species_list": ["bigboobs"], "scores": {}}, true, false)
+	_check("v019: only high so far -> no Shaky Hands", not Achievements.has("shaky_hands"))
+	Achievements.note_photo({"in_frame": true, "species_list": ["bigboobs"], "scores": {}}, false, true)
+	_check("v019: high and buzzed photos in one night -> Shaky Hands", Achievements.has("shaky_hands"))
+	var all:= Achievements.guide_species()
+	_check("v019: Field Guide skips visitors and the Where-wolf", "wherewolf" not in all and "ufo" not in all and "santa" not in all and all.size() >= 10)
+	Achievements.note_photo({"in_frame": true, "species_list": all, "scores": {}})
+	_check("v019: every cryptid on film -> Field Guide", Achievements.has("field_guide"))
+	for m in ["woods", "lake", "city"]:
+		GameState.current_map = m
+		Achievements.note_photo({"in_frame": true, "species_list": ["bigboobs"], "scores": {}})
+	_check("v019: photos on all three maps -> Tourist Trap", Achievements.has("tourist_trap"))
+	GameState.current_map = "woods"
+	for i in 4:
+		Achievements.note_vote("sleep", false)
+	Achievements.note_vote("travel", false)
+	_check("v019: travel votes don't count toward Democracy", not Achievements.has("democracy"))
+	Achievements.note_vote("sleep", false)
+	_check("v019: 5 no-votes on sleep -> Democracy", Achievements.has("democracy"))
+	GameState.money = 10000
+	GameState.owned_items.append("toe_bobblehead")
+	GameState.skin = "superfan"
+	Achievements.check_owned()
+	_check("v019: $10,000 -> Millionaire's Club", Achievements.has("millionaire"))
+	_check("v019: bobblehead + Toe Superfan -> Toe Rogan Experience", Achievements.has("toe_rogan"))
+	_check("v019: not every outfit yet -> no Fashion Victim", not Achievements.has("fashion_victim"))
+	GameState.owned_skins = Skins.ids()
+	Achievements.check_owned()
+	_check("v019: every outfit -> Fashion Victim", Achievements.has("fashion_victim"))
+	GameState.skin = "default"
+	# Ghost: a clean night ended by sleeping, with photos taken.
+	GameState.night = 3
+	for i in 3:
+		Achievements.note_photo({"in_frame": true, "species_list": ["bigboobs"], "scores": {}})
+	GameState.end_night(false)
+	_check("v019: clean night with 3 photos, slept -> Ghost", Achievements.has("ghost"))
+	Achievements.got.erase("ghost")
+	for i in 3:
+		Achievements.note_photo({"in_frame": true, "species_list": ["bigboobs"], "scores": {}})
+	Achievements.note_flashed(false)
+	GameState.end_night(false)
+	_check("v019: flashed during the night -> no Ghost", not Achievements.has("ghost"))
+	GameState.night = 11
+	Achievements.check_owned()
+	_check("v019: 10 nights survived -> Night Shift", Achievements.has("night_shift"))
+	mp.snare(0.1)
+	_check("v019: bear trap -> Hold Still", Achievements.has("hold_still"))
+	# Toast and the pause-menu list.
+	await get_tree().process_frame
+	hud.call("_tick_toast", 0.016)
+	_check("v019: unlocking shows the pop-up", (hud.get("_toast") as Control).visible)
+	var pm: PauseMenu = main_node.get("_pause")
+	pm.call("_show", pm.get("_ach_page"))
+	var rows:= (pm.get("_ach_list") as VBoxContainer).get_child_count()
+	_check("v019: achievements page lists them all", rows >= 19 + 3)
+	_check("v019: achievements never write a file in tests", not FileAccess.file_exists(Achievements.PATH) or Achievements.saving_enabled == false)
+	main_node.free()
+	Achievements.clear()
 	GameState.reset()
